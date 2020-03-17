@@ -6,6 +6,9 @@ import numpy as np
 import argparse
 import subprocess
 from sklearn.mixture import GaussianMixture
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 tab  = '\t'
 endl = '\n'
@@ -31,6 +34,10 @@ def parse_user_arguments():
     parser.add_argument('--max_num_repeat_unit', required = False, metavar = 'max_num_repeat_unit', type = int, default = 200, help ='maximum possible number of the repeat unit (default: 200)')
     parser.add_argument('--samtools', required = False, metavar = 'samtools', type = str, default = 'samtools', help ='path to samtools (default: using environment default)')
     parser.add_argument('--minimap2', required = False, metavar = 'minimap2', type = str, default = 'minimap2', help ='path to minimap2 (default: using environment default)')
+    parser.add_argument('--use_existing_intermediate_files', dest='use_existing_intermediate_files', action='store_true', help='use existing intermediate when rerun the tool (default: False)')
+    parser.add_argument('--high_conf_only', dest='high_conf_only', action='store_true', help='only output high confidently phased reads (default: False)')
+    parser.set_defaults(use_existing_intermediate_files = False)
+    parser.set_defaults(high_conf_only = False)
 
     input_args = parser.parse_args()
 
@@ -91,6 +98,8 @@ def ampliconRepeat (input_args):
     method              = input_args.method
     fixed_cutoff_value  = input_args.fixed_cutoff_value
     ploidy              = input_args.ploidy
+    high_conf_only      = input_args.high_conf_only
+
 
     os.system('mkdir -p %s' % out_dir)
     ref_amp_seq_file = os.path.abspath(ref_amp_seq_file)
@@ -103,24 +112,31 @@ def ampliconRepeat (input_args):
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
     aligned_bam_file = os.path.join(out_dir, '%s.%s.minimap2.bam' % (in_fastq_prefix, platform))
     
-    align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, aligned_bam_file)
+    if input_args.use_existing_intermediate_files == False or os.path.exists(aligned_bam_file) == False:
+        align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, aligned_bam_file)
     
     read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, out_dir)
 
     if method == 'fixed' or method == 'both':
-        each_allele_repeat_count_2d_list = split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, out_dir)
+        split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
+        
     if method == 'gmm' or method == 'both':
-        each_allele_repeat_count_2d_list = split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, out_dir)
-
+        split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
+        
     ## remove temp files
     if os.path.exists(template_fasta_file) : os.remove(template_fasta_file)
     return
 
-def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_file, out_dir):
+def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir):
 
     if ploidy < 1:
         sys.stderr.write('ploidy must be >= 1 !\n')
         sys.exit()
+
+    if high_conf_only:
+        proba_cutoff = 0.95
+    else:
+        proba_cutoff = 0
 
     readname_list = list()
     read_repeat_count_list = list()
@@ -132,11 +148,12 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     bic_list = list()
     bic_list.append(0)
 
+    cov_type = 'tied'
     read_repeat_count_array = np.array(read_repeat_count_list)
     num_data_points = len(read_repeat_count_list)
     read_repeat_count_array = read_repeat_count_array.reshape(num_data_points, 1)
     for n in range(1, ploidy + 1):
-        gmm = GaussianMixture(n_components=n, covariance_type='full', n_init = 10).fit(read_repeat_count_array)
+        gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init = 10).fit(read_repeat_count_array)
         bic = gmm.bic(read_repeat_count_array)
         bic_list.append(bic)
 
@@ -147,11 +164,18 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
             min_bic = bic_list[i]
             min_bic_n_components = i
 
-    final_gmm = GaussianMixture(n_components=min_bic_n_components, covariance_type='full', n_init = 10).fit(read_repeat_count_array)
-    read_label_list = list(final_gmm.predict(read_repeat_count_array))
-    cluster_mean_list = list(final_gmm.means_)
+    final_gmm = GaussianMixture(n_components=min_bic_n_components, covariance_type=cov_type, n_init = 10).fit(read_repeat_count_array)
+    old_read_label_list = list(final_gmm.predict(read_repeat_count_array))
+    proba2darray = final_gmm.predict_proba(read_repeat_count_array)
+    old_cluster_mean_list = list(final_gmm.means_)    
+
+    read_label_list, old_label_to_new_label_dict, new_label_to_old_label_dict = sort_label_by_cluster_mean(old_read_label_list, old_cluster_mean_list)
 
     read_label_dict = dict()
+    read_proba_dict = dict()
+    qc_failed_readname_set = set()
+    all_info_dict = dict()
+    
     each_allele_repeat_count_2d_list = [0] * min_bic_n_components
     for i in range(0, len(each_allele_repeat_count_2d_list)):
         each_allele_repeat_count_2d_list[i] = list()
@@ -161,17 +185,53 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
         repeat_count = read_repeat_count_list[i]
         read_label = read_label_list[i]
         read_label_dict[readname] = read_label
+        proba_array = proba2darray[i]
+        max_prob = max(proba_array)
+        read_proba_dict[readname] = max_prob
+        info = (repeat_count, read_label, max_prob)
+        all_info_dict[readname] = info
         each_allele_repeat_count_2d_list[read_label].append(repeat_count)
+        
+    if high_conf_only:
+        for read_label in range(0, len(each_allele_repeat_count_2d_list)):
+            allele_repeat_count_list = each_allele_repeat_count_2d_list[read_label]
+            old_label = new_label_to_old_label_dict[read_label]
+            gmm_average_repeat_number = old_cluster_mean_list[old_label]
+            std = np.std(allele_repeat_count_list)
+            max_repeat_number = gmm_average_repeat_number + 1 * std
+            min_repeat_number = gmm_average_repeat_number - 1 * std
 
+            for readname in all_info_dict:
+                repeat_count, label, max_prob = all_info_dict[readname]
+                if max_prob < proba_cutoff: qc_failed_readname_set.add(readname)
+                if label == read_label:
+                    if repeat_count > max_repeat_number or repeat_count < min_repeat_number:
+                        qc_failed_readname_set.add(readname)
+
+        qc_passed_each_allele_repeat_count_2d_list = [0] * min_bic_n_components
+        for i in range(0, len(qc_passed_each_allele_repeat_count_2d_list)):
+            qc_passed_each_allele_repeat_count_2d_list[i] = list()
+        for readname in all_info_dict:
+            repeat_count, label, max_prob = all_info_dict[readname]
+            if readname not in qc_failed_readname_set:
+                qc_passed_each_allele_repeat_count_2d_list[label].append(repeat_count)
+    else:
+        qc_passed_each_allele_repeat_count_2d_list = each_allele_repeat_count_2d_list
 
 
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    out_summray_file = os.path.join(out_dir, '%s.GMM.summary.txt' % (in_fastq_prefix))
+    if high_conf_only:
+        out_prefix = os.path.join(out_dir, '%s.GMM.%s.hich_conf' % (in_fastq_prefix, cov_type))
+    else:
+        out_prefix = os.path.join(out_dir, '%s.GMM.%s' % (in_fastq_prefix, cov_type))
+
+    out_summray_file = out_prefix + '.summary.txt'
+    hist_figure_file = out_prefix + '.hist.png'
 
     out_allele_fastq_file_list = list()
     for label in range(0, min_bic_n_components):
         allele_id = label + 1
-        out_allele_fastq_file = os.path.join(out_dir, '%s.GMM.allele%d.fastq' % (in_fastq_prefix, allele_id))
+        out_allele_fastq_file = os.path.join(out_dir, '%s.allele%d.fastq' % (out_prefix, allele_id))
         out_allele_fastq_file_list.append(out_allele_fastq_file)
 
     out_allele_fastq_fp_list = list()
@@ -198,7 +258,8 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
 
         readname = line1.strip().split()[0][1:]
         if readname not in read_label_dict: continue
-
+        if readname  in qc_failed_readname_set: continue
+    
         label = read_label_dict[readname]
         out_allele_fastq_fp_list[label].write(line1 + line2 + line3 + line4)
 
@@ -217,38 +278,116 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     out_summray_fp.write('##' + summary_header + '\n' )
     sys.stdout.write(summary_header + ';')
 
-    for i in range(0, len(each_allele_repeat_count_2d_list)):
-        allele_repeat_count_list = each_allele_repeat_count_2d_list[i]
-        allele_id = i + 1
+    for read_label in range(0, len(qc_passed_each_allele_repeat_count_2d_list)):
+        allele_repeat_count_list = qc_passed_each_allele_repeat_count_2d_list[read_label]
+        allele_id = read_label + 1
         num_reads = len(allele_repeat_count_list)
-        average_repeat_number = cluster_mean_list[i]
+        old_label = new_label_to_old_label_dict[read_label]
+        gmm_average_repeat_number = int(old_cluster_mean_list[old_label] + 0.5)
+        average_repeat_number = int(np.mean(allele_repeat_count_list) + 0.5)
         min_repeat_number = min(allele_repeat_count_list)
         max_repeat_number = max(allele_repeat_count_list)
-        summary_header = 'allele=%d;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (allele_id, num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
+        summary_header = 'allele=%d;num_reads=%d;gmm_average_repeat_number=%.2f;min_repeat_number=%d;average_repeat_number=%.2f;max_repeat_number=%d' % (allele_id, num_reads, gmm_average_repeat_number, min_repeat_number, average_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';')
-
     
     sys.stdout.write('\n')
 
-    out_summray_fp.write('#readname\trepeat_count\tallele\n')
-    for readname in read_repeat_count_dict:
-        repeat_count = read_repeat_count_dict[readname]
-        read_label = read_label_list[i]
+    
+    out_info_list = list()
+    for readname in all_info_dict:
+        if readname in qc_failed_readname_set: continue
+        repeat_count, label, max_prob = all_info_dict[readname]
         allele_id = read_label + 1
-        out_summray_fp.write('%s\t%d\t%d\n' % (readname, repeat_count, allele_id))
+        out_info = (readname, repeat_count, allele_id, max_prob)
+        out_info_list.append(out_info)
+
+    out_info_list.sort(key = lambda x:x[1])
+
+    out_summray_fp.write('#readname\trepeat_count\tallele\n')
+    for i in range(0, len(out_info_list)):
+        readname, repeat_count, allele_id, max_prob = out_info_list[i]
+        if max_prob < proba_cutoff: continue
+        out_summray_fp.write('%s\t%d\t%d\t%f\n' % (readname, repeat_count, allele_id, max_prob))
 
     out_summray_fp.close()
 
-    return each_allele_repeat_count_2d_list
+    
+    plot_repeat_counts(qc_passed_each_allele_repeat_count_2d_list, hist_figure_file)
 
+    return 
 
-def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, out_dir):
+def plot_repeat_counts(each_allele_repeat_count_2d_list, out_file):
+
+    plt.figure(figsize=(6, 4))
+
+    xmin = 0
+    xmax = 0
+    xmin = min(each_allele_repeat_count_2d_list[0])
+    xmax = max(each_allele_repeat_count_2d_list[0])
+
+    for i in range(1, len(each_allele_repeat_count_2d_list)):
+        if xmin >  min(each_allele_repeat_count_2d_list[i]):
+            xmin = min(each_allele_repeat_count_2d_list[i])
+        if xmax <  max(each_allele_repeat_count_2d_list[i]):
+            xmax = max(each_allele_repeat_count_2d_list[i])
+
+    if xmax - xmin < 200:
+        b = range(xmin - 1, xmax + 2)
+    else:
+        b = range(xmin - 1, xmax + 2, int((xmax - xmin)/200))
+
+    debug = 1
+    if debug:
+        b = range(0, 150)
+    for i in range(0, len(each_allele_repeat_count_2d_list)):
+        x = each_allele_repeat_count_2d_list[i]
+        plt.hist(x, bins = b)
+
+    plt.show()
+    plt.savefig(out_file, dpi=300)
+    plt.close('all')
+    
+
+    return
+
+def sort_label_by_cluster_mean(old_read_label_list, cluster_mean_list):
+
+    l = list()
+    for i in range(0, len(cluster_mean_list)):
+        label = i
+        cluster_mean = cluster_mean_list[i]
+        l.append((label, cluster_mean))
+
+    l = sorted(l, key=lambda x:x[1])
+
+    old_label_to_new_label_dict = dict()
+    new_label_to_old_label_dict = dict()
+
+    for i in range(0, len(l)):
+        new_label = i
+        old_label = l[i][0]
+        old_label_to_new_label_dict[old_label] = new_label
+        new_label_to_old_label_dict[new_label] = old_label
+
+    new_read_label_list = list()
+
+    for i in range(0, len(old_read_label_list)):
+        old_label = old_read_label_list[i]
+        new_label = old_label_to_new_label_dict[old_label]
+        new_read_label_list.append(new_label)
+
+    return new_read_label_list, old_label_to_new_label_dict, new_label_to_old_label_dict
+
+def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir):
 
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    out_allele1_fastq_file = os.path.join(out_dir, '%s.fixed_cutoff_%d.allele1.fastq' % (in_fastq_prefix, fixed_cutoff_value))
-    out_allele2_fastq_file = os.path.join(out_dir, '%s.fixed_cutoff_%d.allele2.fastq' % (in_fastq_prefix, fixed_cutoff_value))
-    out_summray_file       = os.path.join(out_dir, '%s.fixed_cutoff_%d.summary.txt' % (in_fastq_prefix, fixed_cutoff_value))
+    out_prefix = '%s.fixed_cutoff_%d' % (in_fastq_prefix, fixed_cutoff_value)
+
+    out_allele1_fastq_file = os.path.join(out_dir, '%s.allele1.fastq' % (out_prefix))
+    out_allele2_fastq_file = os.path.join(out_dir, '%s.allele2.fastq' % (out_prefix))
+    out_summray_file       = os.path.join(out_dir, '%s.summary.txt' % (out_prefix))
+    hist_figure_file       = os.path.join(out_dir, '%s.hist.png' % (out_prefix))
 
     out_allele1_fastq_fp = open(out_allele1_fastq_file, 'w')
     out_allele2_fastq_fp = open(out_allele2_fastq_file, 'w')
@@ -300,7 +439,7 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
     sys.stdout.write(summary_header + ';')
 
     num_reads = len(allele1_repeat_count_list)
-    average_repeat_number = np.mean(allele1_repeat_count_list)
+    average_repeat_number = int(np.mean(allele1_repeat_count_list) + 0.5)
     min_repeat_number = min(allele1_repeat_count_list)
     max_repeat_number = max(allele1_repeat_count_list)
     summary_header = 'allele=1;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
@@ -308,25 +447,38 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
     sys.stdout.write(summary_header + ';')
     
     num_reads = len(allele2_repeat_count_list)
-    average_repeat_number = np.mean(allele2_repeat_count_list)
+    average_repeat_number = int(np.mean(allele2_repeat_count_list) + 0.5)
     min_repeat_number = min(allele2_repeat_count_list)
     max_repeat_number = max(allele2_repeat_count_list)
-    summary_header = 'allele=2;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d\n' % (num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
+    summary_header = 'allele=2;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
     out_summray_fp.write('##' + summary_header + '\n' )
     sys.stdout.write(summary_header + ';\n')
     
-    out_summray_fp.write('#readname\trepeat_count\tallele\n')
+
+    out_info_list = list()
     for readname in read_repeat_count_dict:
         repeat_count = read_repeat_count_dict[readname]
         if repeat_count < fixed_cutoff_value:
-            allele = 1
+            allele_id = 1
         else:
-            allele = 2
-        out_summray_fp.write('%s\t%d\t%d\n' % (readname, repeat_count, allele))
+            allele_id = 2
+        out_info = (readname, repeat_count, allele_id)
+        out_info_list.append(out_info)
+
+    out_info_list.sort(key = lambda x:x[1])
+
+    out_summray_fp.write('#readname\trepeat_count\tallele\n')
+    for i in range(0, len(out_info_list)):
+        readname, repeat_count, allele_id = out_info_list[i]
+        out_summray_fp.write('%s\t%d\t%d\n' % (readname, repeat_count, allele_id))
 
     out_summray_fp.close()
    
-    return [allele1_repeat_count_list, allele2_repeat_count_list]
+    each_allele_repeat_count_2d_list = [allele1_repeat_count_list, allele2_repeat_count_list]
+    
+    plot_repeat_counts(each_allele_repeat_count_2d_list, hist_figure_file)
+
+    return
 
 
 
