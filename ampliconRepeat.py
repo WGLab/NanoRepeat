@@ -266,7 +266,7 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     out_allele_fastq_file_list = list()
     for label in range(0, best_n_components):
         allele_id = label + 1
-        out_allele_fastq_file = os.path.join(out_dir, '%s.allele%d.fastq' % (out_prefix, allele_id))
+        out_allele_fastq_file = out_prefix + 'allele%d.fastq' % (allele_id)
         out_allele_fastq_file_list.append(out_allele_fastq_file)
 
     out_allele_fastq_fp_list = list()
