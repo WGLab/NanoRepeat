@@ -10,29 +10,29 @@ from sklearn.mixture import GaussianMixture
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import gzip
 
 
 
 tab  = '\t'
 endl = '\n'
-debug = 1
+
 def parse_user_arguments():
 
     parser = argparse.ArgumentParser(description='Tandem repeat detection from long-read amplicon sequencing data ')
     ### required arguments ###
     parser.add_argument('--in_fq', required = True, metavar = 'input.fastq', type = str, help = 'input fastq file')
-    parser.add_argument('--platform', required = True, metavar = 'sequencing_platform', type = str, help = 'two valid values: `ont`, `pacbio`')
-    parser.add_argument('--ref_amp_seq', required = True, metavar = 'ref_amplicon_seq.fasta', type = str, help = 'reference amplicon sequence in FASTA format')
-    parser.add_argument('--start_pos', required = True, metavar = 'start_pos', type = int, help = 'start position of the repeat in the reference amplicon sequence (1-based)')
-    parser.add_argument('--end_pos', required = True, metavar = 'end_pos', type = int, help ='end position of the repeat in the reference amplicon sequence (1-based)')
-    parser.add_argument('--repeat_seq', required = True, metavar = 'repeat_seq', type = str, help ='sequence of the repeat unit (e.g. CAG)')
+    parser.add_argument('--platform', required = True, metavar = 'sequencing_platform', type = str, help = 'three valid values: `ont`, `pacbio`, `consensus`')
+    parser.add_argument('--ref_fasta', required = True, metavar = 'ref_genome.fasta', type = str, help = 'reference genome sequence in FASTA format')
+    parser.add_argument('--repeat_region', required = True, metavar = 'chr:start-end', type = str, help = 'repeat region in the reference genome (e.g. chr4:3074876-3074939, coordinates are 1-based)')
+    parser.add_argument('--repeat_unit', required = True, metavar = 'repeat_unit_seq', type = str, help ='sequence of the repeat unit (e.g. CAG)')
     parser.add_argument('--out_dir', required = True, metavar = 'path/to/output_dir', type = str, help ='path to the output directory')
-    parser.add_argument('--version', action='version', version='%(prog)s 0.1.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
 
     ### optional arguments ### ploidy
     parser.add_argument('--method', required = False, metavar = 'method for splitting alleles', type = str, default = 'gmm', help ='three valid values: `fixed`, `gmm`, and `both` (default: `gmm`). If `fixed` or `both` is chosen, --fixed_cutoff_value must be specified. ')
     parser.add_argument('--fixed_cutoff_value', required = False, metavar = 'fixed_repeat_count_cutoff_value', type = int, default = -1, help ='split alleles using this fixed_cutoff_value (required if --method is `fixed`)')
-    parser.add_argument('--ploidy', required = False, metavar = 'ploidy of the sample', type = int, default = 2, help ='ploidy of the sample (default: 2)')    
+    parser.add_argument('--ploidy', required = False, metavar = 'ploidy of the sample', type = int, default = 2, help ='ploidy of the sample (default: 2)')
     parser.add_argument('--num_threads', required = False, metavar = 'number_of_threads', type = int, default = 1, help ='number of threads used by minimap2 (default: 1)')
     parser.add_argument('--max_num_repeat_unit', required = False, metavar = 'max_num_repeat_unit', type = int, default = 200, help ='maximum possible number of the repeat unit (default: 200)')
     parser.add_argument('--samtools', required = False, metavar = 'samtools', type = str, default = 'samtools', help ='path to samtools (default: using environment default)')
@@ -51,13 +51,12 @@ def parse_user_arguments():
     input_args.method   = input_args.method.strip('\"')
     input_args.platform = input_args.platform.strip('\"')
 
-    valid_platform_list = ['ont', 'pacbio']
+    valid_platform_list = ['ont', 'pacbio', 'consensus']
     valid_method_list = ['gmm', 'fixed', 'both']
     input_args.platform = input_args.platform.lower()
 
-
     if input_args.platform not in valid_platform_list:
-        sys.stderr.write('ERROR! --platform should be ont or pacbio !\n')
+        sys.stderr.write('ERROR! --platform should be one of the three valid values: ont, pacbio, consensus !\n')
         sys.exit()
 
     if (input_args.method == 'fixed' or input_args.method == 'both')and input_args.fixed_cutoff_value == -1:
@@ -87,12 +86,12 @@ def main():
 
 def ampliconRepeat (input_args):
 
+    ## preprocessing of input parameters ##
     samtools            = input_args.samtools
     minimap2            = input_args.minimap2
-    ref_amp_seq_file    = input_args.ref_amp_seq
-    repeat_seq          = input_args.repeat_seq
-    start_pos           = input_args.start_pos
-    end_pos             = input_args.end_pos
+    ref_fasta_file      = input_args.ref_fasta
+    repeat_unit         = input_args.repeat_unit
+    repeat_region       = input_args.repeat_region
     in_fastq_file       = input_args.in_fq
     platform            = input_args.platform
     max_num_repeat_unit = input_args.max_num_repeat_unit
@@ -103,33 +102,50 @@ def ampliconRepeat (input_args):
     ploidy              = input_args.ploidy
     high_conf_only      = input_args.high_conf_only
 
-
     os.system('mkdir -p %s' % out_dir)
-    ref_amp_seq_file = os.path.abspath(ref_amp_seq_file)
+    ref_fasta_file = os.path.abspath(ref_fasta_file)
     in_fastq_file = os.path.abspath(in_fastq_file)
 
-    template_fasta_file = os.path.join(out_dir, 'temp_template.fasta')
-
-    build_fasta_template (ref_amp_seq_file, repeat_seq, start_pos, end_pos, max_num_repeat_unit, template_fasta_file)
+    ## make template fasta file ##
+    max_flanking_len = 10000
+    template_fasta_file = os.path.join(out_dir, 'templates.fasta')
+    repeat_chr, repeat_start, repeat_end = analysis_repeat_region(repeat_region)
+    build_fasta_template (ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_num_repeat_unit, template_fasta_file, max_flanking_len)
     
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
     aligned_bam_file = os.path.join(out_dir, '%s.%s.minimap2.bam' % (in_fastq_prefix, platform))
-    
+    sorted_bam_file = os.path.join(out_dir, '%s.%s.minimap2.primary_align.sorted.bam' % (in_fastq_prefix, platform))
     if input_args.use_existing_intermediate_files == False or os.path.exists(aligned_bam_file) == False:
-        align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, aligned_bam_file)
+        align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, aligned_bam_file, sorted_bam_file)
     
-    read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, out_dir)
+    read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, repeat_unit, max_flanking_len, out_dir)
 
     if method == 'fixed' or method == 'both':
         split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
         
     if method == 'gmm' or method == 'both':
         split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
-        
-    ## remove temp files
-    if os.path.exists(template_fasta_file) : os.remove(template_fasta_file)
+    
     return
 
+def analysis_repeat_region(repeat_region):
+
+    a = repeat_region.split(':')
+    if len(a) != 2:
+        sys.stderr.write('ERROR! --repeat_region should be in the format of chr:start-end (e.g. chr4:3074876-3074939)!')
+        sys.exit(1)
+    
+    repeat_chr = a[0]
+
+    b = a[1].split('-')
+    if len(b) != 2:
+        sys.stderr.write('ERROR! --repeat_region should be in the format of chr:start-end (e.g. chr4:3074876-3074939)!')
+        sys.exit(1)
+
+    repeat_start = int(b[0])
+    repeat_end = int(b[1])
+
+    return repeat_chr, repeat_start, repeat_end
 
 def chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, cov_type):
 
@@ -322,11 +338,13 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
         num_reads = len(allele_repeat_count_list)
         old_label = new_label_to_old_label_dict[read_label]
         gmm_average_repeat_number = int(old_cluster_mean_list[old_label] + 0.5)
-        predicted_repeat_count_list.append(gmm_average_repeat_number)
+        
         average_repeat_number = int(np.mean(allele_repeat_count_list) + 0.5)
+        median_repeat_number = int(np.median(allele_repeat_count_list) + 0.5)
+        predicted_repeat_count_list.append(median_repeat_number)
         min_repeat_number = min(allele_repeat_count_list)
         max_repeat_number = max(allele_repeat_count_list)
-        summary_header = 'allele=%d;num_reads=%d;gmm_average_repeat_number=%.2f;min_repeat_number=%d;average_repeat_number=%.2f;max_repeat_number=%d' % (allele_id, num_reads, gmm_average_repeat_number, min_repeat_number, average_repeat_number, max_repeat_number)
+        summary_header = 'allele=%d;num_reads=%d;gmm_average_repeat_number=%.2f;min_repeat_number=%d;median_repeat_number=%.2f;max_repeat_number=%d' % (allele_id, num_reads, gmm_average_repeat_number, min_repeat_number, median_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';')
     
@@ -364,23 +382,20 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
 
     plt.figure(figsize=(6, 4))
 
-    xmin = 0
-    xmax = 100000000
+    all_data_list = list()
+    for x in each_allele_repeat_count_2d_list:
+        all_data_list += x
 
-    for i in range(1, len(each_allele_repeat_count_2d_list)):
-        if len(each_allele_repeat_count_2d_list[i]) == 0: continue
-        if xmin >  min(each_allele_repeat_count_2d_list[i]):
-            xmin = min(each_allele_repeat_count_2d_list[i])
-        if xmax <  max(each_allele_repeat_count_2d_list[i]):
-            xmax = max(each_allele_repeat_count_2d_list[i])
+    if len(all_data_list) == 0:
+        return
+
+    xmin = min(all_data_list)
+    xmax = max(all_data_list)
 
     if xmax - xmin < 200:
         b = range(xmin - 1, xmax + 2)
     else:
         b = range(xmin - 1, xmax + 2, int((xmax - xmin)/200))
-
-    if debug:
-        b = range(0, 150)
 
     for i in range(0, len(each_allele_repeat_count_2d_list)):
         x = each_allele_repeat_count_2d_list[i]
@@ -390,8 +405,8 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
         plt.axvline(x=repeat_count, color = 'grey', linestyle = ':')
 
     plt.title('Repeat number distribution')
-    plt.xlabel('repeat number')
-    plt.ylabel('number of reads')
+    plt.xlabel('number of reads')
+    plt.ylabel('repeat number')
     plt.show()
     plt.savefig(out_file, dpi=300)
     plt.close('all')
@@ -490,28 +505,30 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
     num_reads = len(allele1_repeat_count_list)
     if num_reads > 0:
         average_repeat_number = int(np.mean(allele1_repeat_count_list) + 0.5)
-        predicted_repeat_count_list.append(average_repeat_number)
+        median_repeat_number = int(np.median(allele1_repeat_count_list) + 0.5)
+        predicted_repeat_count_list.append(median_repeat_number)
         min_repeat_number = min(allele1_repeat_count_list)
         max_repeat_number = max(allele1_repeat_count_list)
-        summary_header = 'allele=1;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
+        summary_header = 'allele=1;num_reads=%d;median_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';')
     else:
-        summary_header = 'allele=1;num_reads=0;average_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
+        summary_header = 'allele=1;num_reads=0;median_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';')
     
     num_reads = len(allele2_repeat_count_list)
     if num_reads > 0: 
         average_repeat_number = int(np.mean(allele2_repeat_count_list) + 0.5)
-        predicted_repeat_count_list.append(average_repeat_number)
+        median_repeat_number = int(np.median(allele1_repeat_count_list) + 0.5)
+        predicted_repeat_count_list.append(median_repeat_number)
         min_repeat_number = min(allele2_repeat_count_list)
         max_repeat_number = max(allele2_repeat_count_list)
-        summary_header = 'allele=2;num_reads=%d;average_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, average_repeat_number, min_repeat_number, max_repeat_number)
+        summary_header = 'allele=2;num_reads=%d;median_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';\n')
     else:
-        summary_header = 'allele=2;num_reads=0;average_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
+        summary_header = 'allele=2;num_reads=0;median_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
         out_summray_fp.write('##' + summary_header + '\n' )
         sys.stdout.write(summary_header + ';\n')
     
@@ -548,56 +565,71 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
 
 
 
-def align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, out_bam_file):
+def align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, out_bam_file, sorted_bam_file):
 
     if platform == 'ont':
         platform_para = 'map-ont'
     elif platform == 'pacbio':
         platform_para = 'map-pb'
+    elif platform == 'consensus':
+        platform_para = 'asm20'
     else:
         sys.stderr.write('ERROR! Unknown platform: %s\n' % platform)
         sys.exit()
 
     cmd = '%s -N 5 --cs -t %d -a -x %s %s %s | %s view -hb - > %s' % (minimap2, num_threads, platform_para, template_fasta_file, in_fastq_file, samtools, out_bam_file)
-
     os.system(cmd)
     sys.stderr.write('NOTICE: Running command: `%s`\n' % (cmd))
-   
+
+    out_primary_bam_file = out_bam_file + '.primary.bam'
+    cmd = '%s view -hb --threads %d -F 4 -F 256 -F 2048 %s > %s' % (samtools, num_threads, out_bam_file, out_primary_bam_file)
+    os.system(cmd)
+    sys.stderr.write('NOTICE: Running command: `%s`\n' % (cmd))
+
+    cmd = '%s sort --threads %d -o %s %s' % (samtools, num_threads, sorted_bam_file, out_primary_bam_file)
+    os.system(cmd)
+    sys.stderr.write('NOTICE: Running command: `%s`\n' % (cmd))
+
+    cmd = '%s index %s' % (samtools, sorted_bam_file)
+    os.system(cmd)
+    sys.stderr.write('NOTICE: Running command: `%s`\n' % (cmd))
+
+    try:
+        os.remove(out_primary_bam_file)
+    except:
+        pass
+
     return
 
 
-def build_fasta_template(ref_amp_seq_file, repeat_seq, start_pos, end_pos, max_num_repeat_unit, template_fasta_file):
+def build_fasta_template (ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_num_repeat_unit, template_fasta_file, max_flanking_len):
 
-    fasta_name_list, fasta_seq_list = read_fasta_file(ref_amp_seq_file)
 
-    if len(fasta_name_list) < 1:
-        sys.stderr.write('ERROR! FILE: %s has no valid sequence!\n' % ref_amp_seq_file)
+    repeat_chr_seq  = read_one_chr_from_fasta_file(ref_fasta_file, repeat_chr)
+
+    if len(repeat_chr_seq) == 0:
+        sys.stderr.write('ERROR! FILE: %s has no valid sequence!\n' % ref_fasta_file)
         sys.exit()
 
-    if len(fasta_name_list) > 1:
-        sys.stderr.write('ERROR! There are multiple sequences in FILE: %s! There should be only one amplicon sequence' % ref_amp_seq_file)
-        sys.exit()
 
-    ref_amp_name = fasta_name_list[0]
-    ref_amp_seq  = fasta_seq_list[0]
+    ref_amp_name = repeat_chr
+   
+    repeat_start -= 1
 
-    start_pos -= 1
+    left_start_pos = repeat_start - max_flanking_len
+    if left_start_pos < 0: left_start_pos = 0
+    right_end_pos = repeat_end + max_flanking_len
+    if right_end_pos > len(repeat_chr_seq): right_end_pos = len(repeat_chr_seq)
 
-    left_fasta_seq  = ref_amp_seq[0:start_pos]
-    right_fasta_seq = ref_amp_seq[end_pos:]
-
- 
-    max_flanking_len = 50000
-
-    if len(left_fasta_seq)  > max_flanking_len:  left_fasta_seq = left_fasta_seq[-max_flanking_len:]
-    if len(right_fasta_seq) > max_flanking_len:  right_fasta_seq = right_fasta_seq[0:max_flanking_len]
+    left_fasta_seq  = repeat_chr_seq[left_start_pos:repeat_start]
+    right_fasta_seq = repeat_chr_seq[repeat_end:right_end_pos]
 
     template_fasta_fp = open(template_fasta_file, 'w')
     max_base_per_line = 100
 
-    for repeat_count in range(1, max_num_repeat_unit + 1):
+    for repeat_count in range(0, max_num_repeat_unit + 1):
         template_fasta_fp.write('>%d\n' % repeat_count)
-        seq = left_fasta_seq + repeat_seq * repeat_count + right_fasta_seq
+        seq = left_fasta_seq + repeat_unit * repeat_count + right_fasta_seq
         for i in range(0, len(seq), max_base_per_line):
             start_pos = i
             end_pos = i + max_base_per_line
@@ -608,76 +640,119 @@ def build_fasta_template(ref_amp_seq_file, repeat_seq, start_pos, end_pos, max_n
 
     return
 
-def read_fasta_file(fasta_file):
+def read_one_chr_from_fasta_file(fasta_file, target_chr):
 
     if '.gz' == fasta_file[-3:]:
         fasta_fp = gzip.open(fasta_file, 'rt')
     else:
         fasta_fp = open(fasta_file, 'rt')
 
-    fasta_name_list = list()
-    fasta_seq_list = list()
-    curr_name = ''
-    curr_seq = ''
+    target_seq = ''
 
+    status = 's' # skip
     while 1:
         line = fasta_fp.readline()
         if not line: break
         line = line.strip()
         if not line: continue
         if line[0] ==  '>':
-            if len(curr_seq) > 0 and len(curr_name) > 0:
-                fasta_name_list.append(curr_name)
-                fasta_seq_list.append(curr_seq)
-            curr_name = line[1:]
-            curr_seq = ''
-            continue
+            new_contig_name = line[1:].split()[0]
+            if new_contig_name == target_chr:
+                status = 'r'
+                continue
+            else:
+                if len(target_seq) > 0:
+                    status = 'd'
+                    break
+                else:
+                    status = 's'
+                    continue
 
-        curr_seq += line
+        if status == 'd': 
+            break
+        elif status == 's':
+            continue
+        elif status == 'r':
+            target_seq += line
      
     fasta_fp.close()
-
-    if len(curr_seq) > 0 and len(curr_name) > 0:
-        fasta_name_list.append(curr_name)
-        fasta_seq_list.append(curr_seq)
     
-    return fasta_name_list, fasta_seq_list
+    return target_seq
 
 
-def calculate_repeat_count_for_each_read (samtools, in_bam_file, out_dir):
+def calculate_repeat_count_for_each_read (samtools, in_bam_file, repeat_unit, start_pos, out_dir):
 
+    min_non_repeat_flanking_length = 20
     bam_file_name = os.path.split(in_bam_file)[1]
     bam_prefix    = os.path.splitext(bam_file_name)[0]
 
     out_coreinfo_file = os.path.join(out_dir, '%s.coreinfo.txt' % bam_prefix)
-    cmd = '%s view -F 4 -F 256 -F 2048 %s | cut -f 1-5 > %s' % (samtools, in_bam_file, out_coreinfo_file)
+    cmd = '%s view -F 4 -F 256 -F 2048 %s | cut -f 1-6 > %s' % (samtools, in_bam_file, out_coreinfo_file)
     sys.stderr.write ('NOTICE: running command: `%s` \n' % cmd)
     os.system(cmd)
 
     read_repeat_count_dict = dict()
     out_coreinfo_fp = open(out_coreinfo_file, 'r')
-
+    repeat_unit_length = len(repeat_unit)
     while 1:
         line = out_coreinfo_fp.readline()
         if not line: break
         line = line.strip().split(tab)
-        if len(line) != 5:
+        if len(line) != 6:
             sys.stderr.write ('ERROR! invalid alignment: %s \n' % ('\t'.join(line)))
             sys.exit()
         readname = line[0]
         flag = int(line[1])
         contig = line[2]
-        if flag & 256 or flag & 2048: continue
-
+        left_align_pos = int(line[3])
+        mapq = int(line[4])
+        cigar = line[5]
         repeat_count = int(contig)
-        read_repeat_count_dict[readname] = repeat_count
 
+        right_align_pos = get_right_align_pos_from_cigar(cigar, left_align_pos)
+        
+
+        if flag & (4|256|1024|2048): continue
+        if left_align_pos > start_pos - min_non_repeat_flanking_length: continue
+        if right_align_pos < start_pos + repeat_count * repeat_unit_length + min_non_repeat_flanking_length:  continue
+        read_repeat_count_dict[readname] = repeat_count
+        
     out_coreinfo_fp.close()
 
-    os.remove(out_coreinfo_file)
+    try:
+        os.remove(out_coreinfo_file)
+    except:
+        pass
 
     return read_repeat_count_dict
 
+
+def get_right_align_pos_from_cigar(cigar, left_align_pos):
+
+    cigar_opr_list = list()
+    cigar_opr_len_string = ''
+
+    ref_shift_cigar_set = set(['M', 'D', 'N', 'X', '='])
+
+    for i in range(0, len(cigar)):
+        if cigar[i].isdigit() == True:
+            cigar_opr_len_string += cigar[i]
+        else:
+            cigar_opr_len_string += '\t'
+            cigar_opr_list.append(cigar[i])
+
+    cigar_opr_len_string = cigar_opr_len_string.strip('\t')
+    cigar_opr_len_list = cigar_opr_len_string.split('\t')
+    if len(cigar_opr_len_list) != len(cigar_opr_list):
+        sys.stderr.write('ERROR in reading cigar!')
+        sys.exit()
+
+    ref_shift_len = 0
+    for i in range(0, len(cigar_opr_list)):
+        if cigar_opr_list[i] in ref_shift_cigar_set:
+            ref_shift_len += int(cigar_opr_len_list[i])
+    
+    return ref_shift_len + left_align_pos
 
 
 if __name__ == '__main__':
