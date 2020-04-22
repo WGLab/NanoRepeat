@@ -21,35 +21,17 @@ After the repeat size of each read is determined, AmpliconRepeat uses the Gaussi
 ## Usage
 
 ```
-usage: ampliconRepeat.py [-h] --in_fq input.fastq --platform
-                         sequencing_platform --ref_amp_seq
-                         ref_amplicon_seq.fasta --start_pos start_pos
-                         --end_pos end_pos --repeat_seq repeat_seq --out_dir
-                         path/to/output_dir [--version]
-                         [--method method for splitting alleles]
-                         [--fixed_cutoff_value fixed_repeat_count_cutoff_value]
-                         [--ploidy ploidy of the sample]
-                         [--num_threads number_of_threads]
-                         [--max_num_repeat_unit max_num_repeat_unit]
-                         [--samtools samtools] [--minimap2 minimap2]
-                         [--use_existing_intermediate_files]
-                         [--high_conf_only]
-
-Tandem repeat detection from long-read amplicon sequencing data
-
 optional arguments:
   -h, --help            show this help message and exit
   --in_fq input.fastq   input fastq file
   --platform sequencing_platform
-                        two valid values: `ont`, `pacbio`
-  --ref_amp_seq ref_amplicon_seq.fasta
-                        reference amplicon sequence in FASTA format
-  --start_pos start_pos
-                        start position of the repeat in the reference amplicon
-                        sequence (1-based)
-  --end_pos end_pos     end position of the repeat in the reference amplicon
-                        sequence (1-based)
-  --repeat_seq repeat_seq
+                        three valid values: `ont`, `pacbio`, `consensus`
+  --ref_fasta ref_genome.fasta
+                        reference genome sequence in FASTA format
+  --repeat_region chr:start-end
+                        repeat region in the reference genome (e.g.
+                        chr4:3074876-3074939, coordinates are 1-based)
+  --repeat_unit repeat_unit_seq
                         sequence of the repeat unit (e.g. CAG)
   --out_dir path/to/output_dir
                         path to the output directory
