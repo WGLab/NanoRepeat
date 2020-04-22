@@ -404,9 +404,9 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
     for repeat_count in predicted_repeat_count_list:
         plt.axvline(x=repeat_count, color = 'grey', linestyle = ':')
 
-    plt.title('Repeat number distribution')
-    plt.xlabel('number of reads')
-    plt.ylabel('repeat number')
+    plt.title('Repeat size distribution')
+    plt.xlabel('repeat size')
+    plt.ylabel('number of reads')
     plt.show()
     plt.savefig(out_file, dpi=300)
     plt.close('all')
