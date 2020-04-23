@@ -138,18 +138,19 @@ def ampliconRepeat (input_args):
     if method == 'gmm' or method == 'both':
         gmm_metainfo_list = split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
 
-    metainfo_file = os.path.join(out_dir, '%s.metainfo.txt' % in_fastq_prefix)
-    metainfo_fp = open(metainfo_file, 'w')
+    if method == 'both':
+        metainfo_file = os.path.join(out_dir, '%s.metainfo.txt' % in_fastq_prefix)
+        metainfo_fp = open(metainfo_file, 'w')
 
-    metainfo_fp.write(in_fastq_prefix)
-    for metainfo in fixed_cutoff_metainfo_list:
-        metainfo_fp.write('\t' + metainfo.output())
+        metainfo_fp.write(in_fastq_prefix)
+        for metainfo in fixed_cutoff_metainfo_list:
+            metainfo_fp.write('\t' + metainfo.output())
 
-    for metainfo in gmm_metainfo_list:
-        metainfo_fp.write('\t' + metainfo.output())
+        for metainfo in gmm_metainfo_list:
+            metainfo_fp.write('\t' + metainfo.output())
 
-    metainfo_fp.write('\n')
-    metainfo_fp.close()
+        metainfo_fp.write('\n')
+        metainfo_fp.close()
 
     return
 
@@ -417,11 +418,6 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
 
     xmin = min(all_data_list)
     xmax = max(all_data_list)
-
-    htt = 1
-    if htt:
-        xmin = 0
-        xmax = 150
 
     if xmax - xmin < 200:
         b = range(xmin - 1, xmax + 2)
