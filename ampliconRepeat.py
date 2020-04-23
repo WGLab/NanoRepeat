@@ -14,7 +14,19 @@ import gzip
 
 
 
-tab  = '\t'
+class Metainfo:
+    def __init__(self, allele_id, num_reads, predicted_repeat_size, min_repeat_size, max_repeat_size):
+        self.allele_id = allele_id
+        self.num_reads = num_reads
+        self.predicted_repeat_size = predicted_repeat_size
+        self.min_repeat_size = min_repeat_size
+        self.max_repeat_size = max_repeat_size
+   
+    def output(self):
+        return '%d\t%d\t%d\t%d\t%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
+
+
+tab  = '\t' 
 endl = '\n'
 
 def parse_user_arguments():
@@ -118,14 +130,27 @@ def ampliconRepeat (input_args):
     if input_args.use_existing_intermediate_files == False or os.path.exists(aligned_bam_file) == False:
         align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file, in_fastq_file, aligned_bam_file, sorted_bam_file)
     
-    read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, repeat_unit, max_flanking_len, out_dir)
+    read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, repeat_unit, min(max_flanking_len, repeat_start), out_dir)
 
     if method == 'fixed' or method == 'both':
-        split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
-        
-    if method == 'gmm' or method == 'both':
-        split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
+        fixed_cutoff_metainfo_list = split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
     
+    if method == 'gmm' or method == 'both':
+        gmm_metainfo_list = split_allele_using_gmm(samtools, ploidy, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
+
+    metainfo_file = os.path.join(out_dir, '%s.metainfo.txt' % in_fastq_prefix)
+    metainfo_fp = open(metainfo_file, 'w')
+
+    metainfo_fp.write(in_fastq_prefix)
+    for metainfo in fixed_cutoff_metainfo_list:
+        metainfo_fp.write('\t' + metainfo.output())
+
+    for metainfo in gmm_metainfo_list:
+        metainfo_fp.write('\t' + metainfo.output())
+
+    metainfo_fp.write('\n')
+    metainfo_fp.close()
+
     return
 
 def analysis_repeat_region(repeat_region):
@@ -323,14 +348,14 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     out_summray_fp = open(out_summray_file, 'w')
     summary_header = '\ninput_fastq=%s' % in_fastq_file
     out_summray_fp.write('##' + summary_header + '\n' )
-    sys.stdout.write(summary_header + ';')
+    #sys.stdout.write(summary_header + ';')
 
     summary_header = 'method=GMM'
     out_summray_fp.write('##' + summary_header + '\n' )
-    sys.stdout.write(summary_header + ';')
+    #sys.stdout.write(summary_header + ';')
 
     predicted_repeat_count_list = list()
-
+    metainfo_list = list()
     for read_label in range(0, len(qc_passed_each_allele_repeat_count_2d_list)):
         allele_repeat_count_list = qc_passed_each_allele_repeat_count_2d_list[read_label]
         if len(allele_repeat_count_list) == 0: continue
@@ -346,9 +371,10 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
         max_repeat_number = max(allele_repeat_count_list)
         summary_header = 'allele=%d;num_reads=%d;gmm_average_repeat_number=%.2f;min_repeat_number=%d;median_repeat_number=%.2f;max_repeat_number=%d' % (allele_id, num_reads, gmm_average_repeat_number, min_repeat_number, median_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
-        sys.stdout.write(summary_header + ';')
-    
-    sys.stdout.write('\n')
+        #sys.stdout.write(summary_header + ';')
+        allele_meta_info = Metainfo(allele_id, num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
+        metainfo_list.append(allele_meta_info)
+    #sys.stdout.write('\n')
 
     
     out_info_list = list()
@@ -376,7 +402,7 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     if sum_num_reads > 0:
         plot_repeat_counts(qc_passed_each_allele_repeat_count_2d_list, predicted_repeat_count_list, hist_figure_file)
 
-    return 
+    return metainfo_list
 
 def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_list, out_file):
 
@@ -391,6 +417,11 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
 
     xmin = min(all_data_list)
     xmax = max(all_data_list)
+
+    htt = 1
+    if htt:
+        xmin = 0
+        xmax = 150
 
     if xmax - xmin < 200:
         b = range(xmin - 1, xmax + 2)
@@ -497,10 +528,10 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
     out_summray_fp = open(out_summray_file, 'w')
     summary_header = '\ninput_fastq=%s' % in_fastq_file
     out_summray_fp.write('##' + summary_header + '\n' )
-    sys.stdout.write(summary_header + ';')
+    #sys.stdout.write(summary_header + ';')
     summary_header = 'method=fixed_cutoff;fixed_cutoff_value=%d' % (fixed_cutoff_value)
     out_summray_fp.write('##' + summary_header + '\n' )
-    sys.stdout.write(summary_header + ';')
+    #sys.stdout.write(summary_header + ';')
 
     num_reads = len(allele1_repeat_count_list)
     if num_reads > 0:
@@ -511,26 +542,33 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
         max_repeat_number = max(allele1_repeat_count_list)
         summary_header = 'allele=1;num_reads=%d;median_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
-        sys.stdout.write(summary_header + ';')
+        allele1_meta_info = Metainfo(1, num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
+        #sys.stdout.write(summary_header + ';')
     else:
         summary_header = 'allele=1;num_reads=0;median_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
         out_summray_fp.write('##' + summary_header + '\n' )
-        sys.stdout.write(summary_header + ';')
+        #sys.stdout.write(summary_header + ';')
+        allele1_meta_info = Metainfo(1, 0, -1, -1, -1)
     
+    
+
     num_reads = len(allele2_repeat_count_list)
     if num_reads > 0: 
         average_repeat_number = int(np.mean(allele2_repeat_count_list) + 0.5)
-        median_repeat_number = int(np.median(allele1_repeat_count_list) + 0.5)
+        median_repeat_number = int(np.median(allele2_repeat_count_list) + 0.5)
         predicted_repeat_count_list.append(median_repeat_number)
         min_repeat_number = min(allele2_repeat_count_list)
         max_repeat_number = max(allele2_repeat_count_list)
         summary_header = 'allele=2;num_reads=%d;median_repeat_number=%d;min_repeat_number=%d;max_repeat_number=%d' % (num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
         out_summray_fp.write('##' + summary_header + '\n' )
-        sys.stdout.write(summary_header + ';\n')
+        allele2_meta_info = Metainfo(2, num_reads, median_repeat_number, min_repeat_number, max_repeat_number)
+        #sys.stdout.write(summary_header + ';\n')
     else:
         summary_header = 'allele=2;num_reads=0;median_repeat_number=-1;min_repeat_number=-1;max_repeat_number=-1'
         out_summray_fp.write('##' + summary_header + '\n' )
-        sys.stdout.write(summary_header + ';\n')
+        allele2_meta_info = Metainfo(2, 0, -1, -1, -1)
+        #sys.stdout.write(summary_header + ';\n')
+
     
 
     out_info_list = list()
@@ -561,7 +599,7 @@ def split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_re
     if sum_num_reads > 0:
         plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_list, hist_figure_file)
 
-    return
+    return [allele1_meta_info, allele2_meta_info]
 
 
 
