@@ -611,7 +611,7 @@ def align_fastq (samtools, minimap2, platform, num_threads, template_fasta_file,
         sys.stderr.write('ERROR! Unknown platform: %s\n' % platform)
         sys.exit()
 
-    cmd = '%s -N 5 --cs -t %d -a -x %s %s %s | %s view -hb - > %s' % (minimap2, num_threads, platform_para, template_fasta_file, in_fastq_file, samtools, out_bam_file)
+    cmd = '%s -N 1000 --cs -t %d -a -x %s %s %s | %s view -hb - > %s' % (minimap2, num_threads, platform_para, template_fasta_file, in_fastq_file, samtools, out_bam_file)
     os.system(cmd)
     sys.stderr.write('NOTICE: Running command: `%s`\n' % (cmd))
 
