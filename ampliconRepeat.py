@@ -308,7 +308,7 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     out_allele_fastq_file_list = list()
     for label in range(0, best_n_components):
         allele_id = label + 1
-        out_allele_fastq_file = out_prefix + 'allele%d.fastq' % (allele_id)
+        out_allele_fastq_file = out_prefix + '.allele%d.fastq' % (allele_id)
         out_allele_fastq_file_list.append(out_allele_fastq_file)
 
     out_allele_fastq_fp_list = list()
@@ -382,7 +382,7 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     for readname in all_info_dict:
         if readname in qc_failed_readname_set: continue
         repeat_count, label, max_prob = all_info_dict[readname]
-        allele_id = read_label + 1
+        allele_id = label + 1
         out_info = (readname, repeat_count, allele_id, max_prob)
         out_info_list.append(out_info)
 
