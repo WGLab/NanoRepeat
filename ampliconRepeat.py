@@ -132,6 +132,7 @@ def ampliconRepeat (input_args):
     
     read_repeat_count_dict = calculate_repeat_count_for_each_read (samtools, aligned_bam_file, repeat_unit, min(max_flanking_len, repeat_start), out_dir)
 
+    sys.stderr.write('NOTICE: number of reads: %d' % len(read_repeat_count_dict))
     if method == 'fixed' or method == 'both':
         fixed_cutoff_metainfo_list = split_allele_using_fixed_cutoff_value (samtools, fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, high_conf_only, out_dir)
     
@@ -238,6 +239,11 @@ def split_allele_using_gmm (samtools, ploidy, read_repeat_count_dict, in_fastq_f
     read_repeat_count_array = np.array(read_repeat_count_list)
     num_data_points = len(read_repeat_count_list)
     read_repeat_count_array = read_repeat_count_array.reshape(num_data_points, 1)
+
+    if num_data_points < 1:
+        sys.stderr.write('ERROR! no enough reads!')
+        sys.stderr.write('ERROR! number of reads passed filtering: %d' % num_data_points)
+        sys.exit()
 
     best_n_components = chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, cov_type)
     #best_n_components = ploidy
@@ -418,6 +424,11 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
 
     xmin = min(all_data_list)
     xmax = max(all_data_list)
+
+    htt = 1
+    if htt:
+        xmin = 0
+        xmax = 150
 
     if xmax - xmin < 200:
         b = range(xmin - 1, xmax + 2)
