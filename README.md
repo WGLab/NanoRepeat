@@ -18,6 +18,28 @@ After the repeat size of each read is determined, AmpRepeat uses the Gaussian mi
 
 <p align="center"><img src="images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
 
+
+## <a name="Installation"></a>Installation
+
+**Prerequisites:**
+
+1. OS: Linux or MacOS
+2. Python3 (python 2 is NOT supported)
+3. minimap2. AmpRepeat calls `minimap2` to do sequence alignment. If you don't have `minimap2` in your system, you can install it following the instructions [here](https://github.com/lh3/minimap2#install). If you are using Linux, you can acquire precompiled binaries using the following commands:
+
+```
+wget https://github.com/lh3/minimap2/releases/download/v2.17/minimap2-2.17_x64-linux.tar.bz2
+tar -jxvf minimap2-2.17_x64-linux.tar.bz2
+./minimap2-2.17_x64-linux/minimap2
+```
+
+You can clone the repository of AmpRepeat using the following command.
+```
+git clone https://github.com/WGLab/AmpRepeat.git
+```
+
+The scripts in the `./AmpRepeat` can run directly without additional compilation or installation.
+
 ## Usage
 
 ```
