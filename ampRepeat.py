@@ -61,7 +61,7 @@ def parse_user_arguments():
     ### optional arguments ###
     parser.add_argument('--num_threads',        required = False, metavar = 'INT',   type = int, default = 1,  help ='number of threads used by minimap2 (default: 1)')
     parser.add_argument('--minimap2',           required = False, metavar = 'PATH',  type = str, default = '', help ='path to minimap2 (default: using environment default)')
-    parser.add_argument('--fixed_cutoff_value', required = False, metavar = 'INT',   type = int, default = -1, help ='split alleles using this fixed_cutoff_value (if set, ploidy will be set to 2). reads with repeat size >= fixed_cutoff_value will be assigned to the second allele')
+    parser.add_argument('--fixed_cutoff_value', required = False, metavar = 'INT',   type = int, default = -1, help ='split alleles using this fixed_cutoff_value (if set, ploidy will be set to 2). Reads with repeat size >= fixed_cutoff_value will be assigned to the second allele. If not set, GMM will be used to split alleles')
     parser.add_argument('--ploidy',             required = False, metavar = 'INT',   type = int, default = 2,  help ='ploidy of the sample (default: 2)')
     parser.add_argument('--anchor_len',         required = False, metavar = 'INT',   type = int, default = 1000, help ='length of up/downstream sequence to help identify the repeat region (default: 1000 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
     parser.add_argument('--version', action='version', version='%(prog)s 0.3.0')
