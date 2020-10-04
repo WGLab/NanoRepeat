@@ -24,7 +24,7 @@ After the repeat size of each read is determined, AmpRepeat uses the Gaussian mi
 **Prerequisites:**
 
 1. OS: Linux or MacOS
-2. Python3 (python 2 is NOT supported)
+2. Python3 (Python 2 is NOT supported)
 3. Python packages: `numpy`, `sklearn`, `matplotlib`. You can use `pip` to install the packages:
     ```
     pip install --user numpy sklearn matplotlib
