@@ -1,6 +1,6 @@
-# AmpliconRepeat
+# AmpRepeat
 
-AmpliconRepeat is a computational tool for tandem repeat detection from long-read amplicon sequencing data. 
+AmpRepeat is a computational tool for tandem repeat detection from long-read amplicon sequencing data. 
 
 ## Features
 1) Accurate estimation of repeat size (number of repeat units) from long-read sequencing data
@@ -10,51 +10,49 @@ AmpliconRepeat is a computational tool for tandem repeat detection from long-rea
 
 ## Workflow
 
-AmpliconRepeat generates a series of sequences where the repeat sizes are from 1 to N (a user specified value) with 10 kb left and right flanking sequences. The reads were aligned to this series of sequences using [minimap2](https://github.com/lh3/minimap2) with the parameter for the specified platform. The repeat size of the sequence with the highest alignment score was the estimate of the repeat size of the read. 
+AmpRepeat generates a series of sequences where the repeat sizes are from 1 to N (a user specified value) with 10 kb left and right flanking sequences. The reads were aligned to this series of sequences using [minimap2](https://github.com/lh3/minimap2) with the parameter for the specified platform. The repeat size of the sequence with the highest alignment score was the estimate of the repeat size of the read. 
 
 <p align="center"><img src="images/repeat_size_estimation.jpg" alt="repeat_size_estimation" width="100%"></p>
 
-After the repeat size of each read is determined, AmpliconRepeat uses the Gaussian mixture model (GMM) to assign reads to alleles. First, outlier reads with repeat sizes that are outside three standard deviations from the mean are removed. Next, we assume that the repeat size is a mixture of N Gaussian models, where N is 1 or 2 for a diploid genome. We use the Bayesian information criterion (BIC) to select the best N. After the best N is selected, the label of each read is predicted using the trained Gaussian mixture model. In high-confidence mode, a read is discarded if it is not confidently assigned to a Gaussian model (p < 0.95) or if it is outside three standard deviations from the mean of that model.
+After the repeat size of each read is determined, AmpRepeat uses the Gaussian mixture model (GMM) to assign reads to alleles. First, outlier reads with repeat sizes that are outside three standard deviations from the mean are removed. Next, we assume that the repeat size is a mixture of N Gaussian models, where N is 1 or 2 for a diploid genome. We use the Bayesian information criterion (BIC) to select the best N. After the best N is selected, the label of each read is predicted using the trained Gaussian mixture model. In high-confidence mode, a read is discarded if it is not confidently assigned to a Gaussian model (p < 0.95) or if it is outside three standard deviations from the mean of that model.
 
 <p align="center"><img src="images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
 
 ## Usage
 
 ```
+usage: ampRepeat.py [-h] --in_fq PATH --platform STRING --ref_fasta PATH
+                    --repeat_region chr:start-end --repeat_unit STRING
+                    --max_repeat_size INT --out_dir PATH [--num_threads INT]
+                    [--minimap2 PATH] [--fixed_cutoff_value INT]
+                    [--ploidy INT] [--anchor_len INT] [--version]
+
+A tools for short tandem repeat detection from long-read amplicon sequencing
+data
+
 optional arguments:
   -h, --help            show this help message and exit
-  --in_fq input.fastq   input fastq file
-  --platform sequencing_platform
-                        three valid values: `ont`, `pacbio`, `consensus`
-  --ref_fasta ref_genome.fasta
-                        reference genome sequence in FASTA format
+  --in_fq PATH          path to input fastq file
+  --platform STRING     three valid values: ont, pacbio, consensus
+  --ref_fasta PATH      path to reference genome sequence in FASTA format
   --repeat_region chr:start-end
                         repeat region in the reference genome (e.g.
                         chr4:3074876-3074939, coordinates are 1-based)
-  --repeat_unit repeat_unit_seq
-                        sequence of the repeat unit (e.g. CAG)
-  --out_dir path/to/output_dir
-                        path to the output directory
+  --repeat_unit STRING  sequence of the repeat unit (e.g. CAG)
+  --max_repeat_size INT
+                        maximum possible number of the repeat unit
+  --out_dir PATH        path to the output directory
+  --num_threads INT     number of threads used by minimap2 (default: 1)
+  --minimap2 PATH       path to minimap2 (default: using environment default)
+  --fixed_cutoff_value INT
+                        split alleles using this fixed_cutoff_value (if set,
+                        ploidy will be set to 2). reads with repeat size >=
+                        fixed_cutoff_value will be assigned to the second
+                        allele
+  --ploidy INT          ploidy of the sample (default: 2)
+  --anchor_len INT      length of up/downstream sequence to help identify the
+                        repeat region (default: 1000 bp, increase this value
+                        if the 1000 bp up/downstream sequences are also
+                        repeat)
   --version             show program's version number and exit
-  --method method for splitting alleles
-                        three valid values: `fixed`, `gmm`, and `both`
-                        (default: `gmm`). If `fixed` or `both` is chosen,
-                        --fixed_cutoff_value must be specified.
-  --fixed_cutoff_value fixed_repeat_count_cutoff_value
-                        split alleles using this fixed_cutoff_value (required
-                        if --method is `fixed`)
-  --ploidy ploidy of the sample
-                        ploidy of the sample (default: 2)
-  --num_threads number_of_threads
-                        number of threads used by minimap2 (default: 1)
-  --max_num_repeat_unit max_num_repeat_unit
-                        maximum possible number of the repeat unit (default:
-                        200)
-  --samtools samtools   path to samtools (default: using environment default)
-  --minimap2 minimap2   path to minimap2 (default: using environment default)
-  --use_existing_intermediate_files
-                        use existing intermediate when rerun the tool
-                        (default: False)
-  --high_conf_only      only output high confidently phased reads (default:
-                        False)
 ```
