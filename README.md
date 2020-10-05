@@ -2,13 +2,21 @@
 
 AmpRepeat is a computational tool for tandem repeat detection from long-read amplicon sequencing data. 
 
-## Features
+## Table of Contents
+
+- [Features](#Features)
+- [Workflow](#Workflow)
+- [Prerequisites](#Prerequisites)
+- [Installation](#Installation)
+- [Usage](#Usage)
+
+## <a name="Features"></a>Features
 1) Accurate estimation of repeat size (number of repeat units) from long-read sequencing data
 2) Supporting different long-read sequencing platforms (e.g. Oxford Nanpore, PacBio)
 3) Classification of reads using Gaussian mixture models (GMM)
 
 
-## Workflow
+## <a name="Workflow"></a>Workflow
 
 AmpRepeat generates a series of sequences where the repeat sizes are from 1 to N (a user specified value) with 10 kb left and right flanking sequences. The reads were aligned to this series of sequences using [minimap2](https://github.com/lh3/minimap2) with the parameter for the specified platform. The repeat size of the sequence with the highest alignment score was the estimate of the repeat size of the read. 
 
@@ -18,7 +26,32 @@ After the repeat size of each read is determined, AmpRepeat uses the Gaussian mi
 
 <p align="center"><img src="images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
 
-## Usage
+
+## <a name="Prerequisites"></a>Prerequisites
+
+1. Operating system: Linux or MacOS
+2. Python3 (Python 2 is NOT supported)
+3. Python packages: `numpy`, `sklearn`, `matplotlib`. You can use `pip` to install the packages:
+    ```
+    pip install --user numpy sklearn matplotlib
+    ```
+4. Minimap2 (version >= 2.8). AmpRepeat calls `minimap2` to do sequence alignment. If you don't have `minimap2` in your system, you can install it following the instructions [here](https://github.com/lh3/minimap2#install). If you are using Linux, you can acquire precompiled binaries using the following commands:
+
+    ```
+    wget https://github.com/lh3/minimap2/releases/download/v2.17/minimap2-2.17_x64-linux.tar.bz2
+    tar -jxvf minimap2-2.17_x64-linux.tar.bz2
+    ./minimap2-2.17_x64-linux/minimap2
+    ```
+## <a name="Installation"></a>Installation
+
+You can clone the repository of AmpRepeat using the following command.
+```
+git clone https://github.com/WGLab/AmpRepeat.git
+```
+
+The scripts in the `./AmpRepeat` can run directly without additional compilation or installation.
+
+## <a name="Usage"></a>Usage
 
 ```
 usage: ampRepeat.py [-h] --in_fq PATH --platform STRING --ref_fasta PATH
