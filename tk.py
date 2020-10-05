@@ -97,29 +97,8 @@ class ReadError:
     def num_edit_bases(self):
         return self.num_mismatch + self.num_ins + self.num_del
         
-'''
-class AnchorAlignInfo:
-    def __init__(self, anchor_side, boundary_pos, paf):
-        self.anchor_side = anchor_side
-        if anchor_side != 'left' and anchor_side != 'right':
-            eprint('ERROR! unknown anchor_side: %s' % anchor_side)
-            sys.exit()
-        
-        if self.anchor_side == 'left':
-            self.repeat_tstart = boundary_pos
-            self.repeat_tend = paf.tend
-            self.repeat_qend = paf.qend
-            query_min_pos, query_max_pos = get_query_position_from_cigar(paf.cigar, paf.tstart, paf.qstart, boundary_pos)
-            self.repeat_qstart = query_min_pos
-        elif self.anchor_side == 'right':
-            self.repeat_tend = boundary_pos
-            self.repeat_tstart = paf.tstart
-            self.repeat_qstart = paf.qstart
-            query_min_pos, query_max_pos = get_query_position_from_cigar(paf.cigar, paf.tstart, paf.qstart, boundary_pos)
-            self.repeat_qend   = query_max_pos
-      
-        return
-'''
+
+
 ### IO ###
 
 def read_list_file(in_list_file, abspath = False):
@@ -423,7 +402,7 @@ def analysis_cigar_string (cigar):
     
     return cigar_opr_list, cigar_opr_len_list
 
-'''
+
 def get_query_position_from_cigar(cigar, starting_tpos, starting_qpos, t_pos):
 
     if starting_tpos > t_pos: return -1
@@ -442,42 +421,34 @@ def get_query_position_from_cigar(cigar, starting_tpos, starting_qpos, t_pos):
                 current_ref_pos   += cigar_opr_len
                 current_query_pos += cigar_opr_len
             else:
-                query_min_pos = current_query_pos + (t_pos-current_ref_pos)
-                query_max_pos = current_query_pos + (t_pos-current_ref_pos) + 1
-                return query_min_pos, query_max_pos
+                return current_query_pos + cigar_opr_len + 1
 
         elif cigar_opr == 'X': # mismatch
             if current_ref_pos + cigar_opr_len < t_pos:
                 current_ref_pos   += cigar_opr_len
                 current_query_pos += cigar_opr_len
             else:
-                query_min_pos = current_query_pos
-                query_max_pos = current_query_pos + cigar_opr_len + 1
-                return query_min_pos, query_max_pos
+                return current_query_pos + cigar_opr_len + 1
 
         elif cigar_opr == 'I': # insertion
             if current_ref_pos + 1 < t_pos:
                 current_query_pos += cigar_opr_len
             else:
-                query_min_pos = current_query_pos
-                query_max_pos = current_query_pos + cigar_opr_len + 1
-                return query_min_pos, query_max_pos
+                return current_query_pos + cigar_opr_len + 1
 
         elif cigar_opr == 'D': # deletion
             if current_ref_pos + cigar_opr_len < t_pos:
                 current_ref_pos   += cigar_opr_len
                 current_query_pos += cigar_opr_len
             else:
-                query_min_pos = current_query_pos
-                query_max_pos = current_query_pos + 1
-                return query_min_pos, query_max_pos
+                return current_query_pos + 1
         else:
             eprint('ERROR! unsupported CIGAR operation: %s' % cigar_opr)
             sys.exit()
 
     return -1, -1
 
-'''
+
 def target_region_alignment_stats_from_cigar(cigar, tstart, tend, ref_region_start, ref_region_end):
 
     # tstart is the aligned start position in the paf file
