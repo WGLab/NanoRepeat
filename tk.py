@@ -160,6 +160,28 @@ def get_file_prefix(input_file):
     return os.path.splitext(os.path.split(input_file)[1])[0]
 
 ### FASTQ/FASTA ###
+    
+def count_fastq (in_fastq_file):
+
+    n_reads = 0
+
+    in_fastq_fp = gzopen(in_fastq_file)
+    while 1:
+        line1 = in_fastq_fp.readline()
+        line2 = in_fastq_fp.readline()
+        line3 = in_fastq_fp.readline()
+        line4 = in_fastq_fp.readline()
+
+        if not line1: break
+        if not line2: break
+        if not line3: break
+        if not line4: break
+
+        n_reads += 1
+
+    in_fastq_fp.close()
+
+    return n_reads
 
 def read_fasta_file(fasta_file):
 
@@ -233,6 +255,21 @@ def read_one_chr_from_fasta_file(fasta_file, target_chr):
     
     return target_seq
 
+
+def extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len):
+    
+    anchor_start = repeat_start - max_anchor_len
+    anchor_end = repeat_start
+    if anchor_start < 0: anchor_start = 0
+    left_anchor_seq = repeat_chrom_seq[anchor_start:anchor_end]
+
+    anchor_start = repeat_end
+    anchor_end = anchor_start + max_anchor_len
+    if anchor_end > len(repeat_chrom_seq):
+        anchor_end = len(repeat_chrom_seq)
+    right_anchor_seq = repeat_chrom_seq[anchor_start:anchor_end]
+    
+    return left_anchor_seq, right_anchor_seq
 
 def split_fastq(in_fastq_file_list, num_out_file, out_prefix):
 
@@ -332,8 +369,6 @@ def extract_fastq_tail_seq(in_fastq_file, read_tail_length, left_tail_fastq_file
     return
 
 
-
-
 def rev_comp(seq):
 
     complement  = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'a': 't', 'c': 'g', 'g': 'c', 't': 'a'}
@@ -368,17 +403,6 @@ def compute_overlap_len(start1, end1, start2, end2):
 ### SAM/BAM/Alignment ###
 
 
-def minimap2_align(in_fastq_file, ref_fasta_file, minimap2, para, out_paf):
-
-    cmd = '%s %s %s %s > %s 2> /dev/null' % (minimap2, para, ref_fasta_file, in_fastq_file, out_paf)
-    ret = os.system(cmd)
-    if ret != 0: 
-        eprint('ERROR: Failed to run command: %s' % cmd)
-        eprint('Return value is: %d' % ret)
-        sys.exit()
-
-    return
-
 def analysis_cigar_string (cigar):
     
     opr_set   = set(['=', 'X', 'I', 'D', 'N', 'S', 'H', 'P', 'M'])
@@ -403,50 +427,32 @@ def analysis_cigar_string (cigar):
     return cigar_opr_list, cigar_opr_len_list
 
 
-def get_query_position_from_cigar(cigar, starting_tpos, starting_qpos, t_pos):
 
-    if starting_tpos > t_pos: return -1
-    if starting_tpos == t_pos: return starting_qpos
-
+def calculate_repeat_size_from_exact_match(cigar, tstart, ref_repeat_start_pos, repeat_unit_size):
+    repeat_size = 0
     cigar_opr_list, cigar_opr_len_list = analysis_cigar_string(cigar)
-
-    current_ref_pos = starting_tpos
-    current_query_pos = starting_qpos
+    current_ref_pos = tstart
     for i in range(0, len(cigar_opr_list)):
         cigar_opr = cigar_opr_list[i]
         cigar_opr_len = cigar_opr_len_list[i]
-
         if cigar_opr == '=':  # match
-            if current_ref_pos + cigar_opr_len < t_pos:
-                current_ref_pos   += cigar_opr_len
-                current_query_pos += cigar_opr_len
-            else:
-                return current_query_pos + cigar_opr_len + 1
-
+            if current_ref_pos >= ref_repeat_start_pos:
+                repeat_size += int(cigar_opr_len/repeat_unit_size)
+            elif current_ref_pos + cigar_opr_len >= ref_repeat_start_pos:
+                overlap_len = current_ref_pos + cigar_opr_len - ref_repeat_start_pos
+                if overlap_len > 0: repeat_size += int(overlap_len/repeat_unit_size)
+            current_ref_pos += cigar_opr_len
         elif cigar_opr == 'X': # mismatch
-            if current_ref_pos + cigar_opr_len < t_pos:
-                current_ref_pos   += cigar_opr_len
-                current_query_pos += cigar_opr_len
-            else:
-                return current_query_pos + cigar_opr_len + 1
-
+            current_ref_pos += cigar_opr_len
         elif cigar_opr == 'I': # insertion
-            if current_ref_pos + 1 < t_pos:
-                current_query_pos += cigar_opr_len
-            else:
-                return current_query_pos + cigar_opr_len + 1
-
+            pass
         elif cigar_opr == 'D': # deletion
-            if current_ref_pos + cigar_opr_len < t_pos:
-                current_ref_pos   += cigar_opr_len
-                current_query_pos += cigar_opr_len
-            else:
-                return current_query_pos + 1
+            current_ref_pos   += cigar_opr_len
         else:
             eprint('ERROR! unsupported CIGAR operation: %s' % cigar_opr)
             sys.exit()
 
-    return -1, -1
+    return repeat_size
 
 
 def target_region_alignment_stats_from_cigar(cigar, tstart, tend, ref_region_start, ref_region_end):
@@ -533,6 +539,9 @@ minimap2_short_para = ' -k 3 -w 2 -n 1 -m 10 -s 40 '
 ### system ###
 
 def switch_two_numbers(a, b):
+    return b, a
+
+def switch_two_objects(a, b):
     return b, a
 
 def run_system_cmd(cmd):

@@ -53,7 +53,7 @@ def parse_user_arguments():
     parser.add_argument('--in_fq',              required = True, metavar = 'PATH',   type = str, help = 'path to input fastq file')
     parser.add_argument('--platform',           required = True, metavar = 'STRING', type = str, help = 'three valid values: ont, pacbio, consensus')
     parser.add_argument('--ref_fasta',          required = True, metavar = 'PATH',   type = str, help = 'path to reference genome sequence in FASTA format')
-    parser.add_argument('--repeat_region',      required = True, metavar = 'chr:start-end', type = str, help = 'repeat region in the reference genome (e.g. chr4:3074876-3074939, coordinates are 1-based)')
+    parser.add_argument('--repeat_region',      required = True, metavar = 'chr:start-end', type = str, help = 'repeat region in the reference genome (e.g. chr4:3074877-3074939, coordinates are 1-based)')
     parser.add_argument('--repeat_unit',        required = True, metavar = 'STRING', type = str, help = 'sequence of the repeat unit (e.g. CAG)')
     parser.add_argument('--max_repeat_size',    required = True, metavar = 'INT',    type = int, help = 'maximum possible number of the repeat unit')
     parser.add_argument('--out_dir',            required = True, metavar = 'PATH',   type = str, help = 'path to the output directory')
@@ -136,6 +136,7 @@ def ampRepeat (input_args):
 
     repeat_chr, repeat_start, repeat_end = analysis_repeat_region(repeat_region)
 
+    print('DEBUG: repeat_start=%d, repeat_end=%d' % (repeat_start, repeat_end))
     tk.eprint('NOTICE: intitial estimation of repeat size...')
     first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, temp_out_dir)
     
@@ -511,7 +512,7 @@ def fine_tune_read_count(first_round_repeat_count_dict, potential_repeat_region_
     fine_tuned_repeat_count_dict = dict()
 
     repeat_chrom_seq  = tk.read_one_chr_from_fasta_file(ref_fasta_file, repeat_chr)
-    left_anchor_seq, right_anchor_seq = extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
+    left_anchor_seq, right_anchor_seq = tk.extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
     left_anchor_len = len(left_anchor_seq)
     right_anchor_len = len(right_anchor_seq)
     repeat_unit_size = len(repeat_unit)
@@ -659,7 +660,7 @@ def split_input_fastq_file_by_repeat_size(first_round_max_repeat_count_dict, pot
 def initial_estimation(in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, out_dir):
     
     repeat_chrom_seq  = tk.read_one_chr_from_fasta_file(ref_fasta_file, repeat_chr)
-    left_anchor_seq, right_anchor_seq = extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
+    left_anchor_seq, right_anchor_seq = tk.extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
     
     ## make template fasta file ##
     template_repeat_size = max_repeat_size + 10
@@ -751,7 +752,7 @@ def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor
         # left anchor is good
         left_paf  = left_anchor_paf_list[0]
         left_paf_num_repeats = int((left_paf.tend - left_boundary_pos)/repeat_unit_size) + 1
-        repeat_size1 = calculate_repeat_size_from_exact_match(left_paf.cigar, left_paf.tstart, left_boundary_pos, repeat_unit_size)
+        repeat_size1 = tk.calculate_repeat_size_from_exact_match(left_paf.cigar, left_paf.tstart, left_boundary_pos, repeat_unit_size)
         outer_end1 = left_paf.qend
         if left_paf.strand == '-': 
             outer_end1 = left_paf.qlen - outer_end1
@@ -760,7 +761,7 @@ def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor
         # right anchor is good
         right_paf = right_anchor_paf_list[0]
         right_paf_num_repeats = int((right_paf.tend - right_boundary_pos)/repeat_unit_size) + 1
-        repeat_size2 = calculate_repeat_size_from_exact_match(right_paf.cigar, right_paf.tstart, right_boundary_pos, repeat_unit_size)
+        repeat_size2 = tk.calculate_repeat_size_from_exact_match(right_paf.cigar, right_paf.tstart, right_boundary_pos, repeat_unit_size)
         outer_end2 = right_paf.qend
         if right_paf.strand == '-': 
             outer_end2 = right_paf.qlen - outer_end2
@@ -802,46 +803,6 @@ def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor
 
     return 
 
-def extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len):
-    
-    anchor_start = repeat_start - max_anchor_len
-    anchor_end = repeat_start
-    if anchor_start < 0: anchor_start = 0
-    left_anchor_seq = repeat_chrom_seq[anchor_start:anchor_end]
-
-    anchor_start = repeat_end
-    anchor_end = anchor_start + max_anchor_len
-    if anchor_end > len(repeat_chrom_seq):
-        anchor_end = len(repeat_chrom_seq)
-    right_anchor_seq = repeat_chrom_seq[anchor_start:anchor_end]
-    
-    return left_anchor_seq, right_anchor_seq
-
-def calculate_repeat_size_from_exact_match(cigar, tstart, ref_repeat_start_pos, repeat_unit_size):
-    repeat_size = 0
-    cigar_opr_list, cigar_opr_len_list = tk.analysis_cigar_string(cigar)
-    current_ref_pos = tstart
-    for i in range(0, len(cigar_opr_list)):
-        cigar_opr = cigar_opr_list[i]
-        cigar_opr_len = cigar_opr_len_list[i]
-        if cigar_opr == '=':  # match
-            if current_ref_pos >= ref_repeat_start_pos:
-                repeat_size += int(cigar_opr_len/repeat_unit_size)
-            elif current_ref_pos + cigar_opr_len >= ref_repeat_start_pos:
-                overlap_len = current_ref_pos + cigar_opr_len - ref_repeat_start_pos
-                if overlap_len > 0: repeat_size += int(overlap_len/repeat_unit_size)
-            current_ref_pos += cigar_opr_len
-        elif cigar_opr == 'X': # mismatch
-            current_ref_pos += cigar_opr_len
-        elif cigar_opr == 'I': # insertion
-            pass
-        elif cigar_opr == 'D': # deletion
-            current_ref_pos   += cigar_opr_len
-        else:
-            tk.eprint('ERROR! unsupported CIGAR operation: %s' % cigar_opr)
-            sys.exit()
-
-    return repeat_size
 
 def analysis_repeat_region(repeat_region):
 
@@ -857,7 +818,7 @@ def analysis_repeat_region(repeat_region):
         tk.eprint('ERROR! --repeat_region should be in the format of chr:start-end (e.g. chr4:3074876-3074939)!')
         sys.exit(1)
 
-    repeat_start = int(b[0])
+    repeat_start = int(b[0])-1
     repeat_end = int(b[1])
 
     return repeat_chr, repeat_start, repeat_end
