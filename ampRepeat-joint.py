@@ -173,15 +173,18 @@ def ampRepeat_joint (input_args):
     
     initial_estimation = initial_estimate_repeat_size(input_args.minimap2, repeat_chrom_seq, input_args.in_fq, input_args.platform, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
 
+    log_fn = 'repeatRepeat.log'
+    log_f  = open(log_fn, 'w')
+    log_f.write(initial_estimation.output_repeat2_boundaries())
+
+
     final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, input_args.platform, input_args.num_threads, temp_out_dir)
     
     jointly_split_alleles_using_gmm (input_args.ploidy, repeat1, repeat2, final_estimation, input_args.in_fq, input_args.out_dir)
 
-    debug = 1
-    if not debug:
-        cmd = f'rm -r {temp_out_dir}'
-        tk.run_system_cmd(cmd)
     tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
+
+    log_f.close()
     return
 
 
@@ -239,6 +242,10 @@ def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, re
             repeat2.round1_max_size = max_repeat_size
         if min_repeat_size < repeat2.round1_min_size:
             repeat2.round1_min_size = min_repeat_size
+
+    
+    if repeat1.round1_max_size > repeat1.max_size: repeat1.round1_max_size = repeat1.max_size
+    if repeat2.round1_max_size > repeat2.max_size: repeat2.round1_max_size = repeat2.max_size
 
     tk.eprint('NOTICE: In round 1 estimation, repeat 1 (%s) is in the range of (%d, %d)' % (repeat1.repeat_unit, repeat1.round1_min_size, repeat1.round1_max_size))
     tk.eprint('NOTICE: In round 1 estimation, repeat 2 (%s) is in the range of (%d, %d)' % (repeat2.repeat_unit, repeat2.round1_min_size, repeat2.round1_max_size))
@@ -564,7 +571,6 @@ def round1_estimation_from_paf(round1_paf_file, repeat1, repeat2, left_anchor_le
     
     round1_estimation_for1read(read_paf_list, repeat1, repeat2, left_anchor_len, right_anchor_len, initial_estimation)
 
-    print('DEBUG: number of bad reads = %d' % len(initial_estimation.bad_reads_set))
     for readname in initial_estimation.bad_reads_set:
         initial_estimation.repeat1_count_range_dict.pop(readname, None)
         initial_estimation.repeat2_count_range_dict.pop(readname, None)
@@ -602,16 +608,23 @@ def round1_estimation_for1read(read_paf_list, repeat1, repeat2, left_anchor_len,
     readname = left_paf.qname
     left_paf_max_repeat_size  = int((left_paf.tend - left_boundary_pos)/repeat1.repeat_unit_size) + 5
     left_paf_min_repeat_size  = tk.calculate_repeat_size_from_exact_match(left_paf.cigar, left_paf.tstart,   left_boundary_pos,  repeat1.repeat_unit_size)
+
+    a = max(0, left_paf_min_repeat_size - 20)
+    b = int(left_paf_min_repeat_size / 2.0)
+    left_paf_min_repeat_size = min(a, b)
+    
+
     initial_estimation.repeat1_count_range_dict[readname] = (left_paf_min_repeat_size, left_paf_max_repeat_size)
 
     
     right_paf_max_repeat_size = int((right_paf.tend - right_boundary_pos)/repeat2.repeat_unit_size) + 5
     right_paf_min_repeat_size = tk.calculate_repeat_size_from_exact_match(right_paf.cigar, right_paf.tstart, right_boundary_pos, repeat2.repeat_unit_size)
+    a = max(0, right_paf_min_repeat_size - 20)
+    b = int(right_paf_min_repeat_size / 2.0)
+    right_paf_min_repeat_size = min(a, b)
+    
     initial_estimation.repeat2_count_range_dict[readname] = (right_paf_min_repeat_size, right_paf_max_repeat_size)
 
-    debug = 1 
-    if debug and right_paf_max_repeat_size > 30:
-        print('DEBUG: %s, %d, %d' % (readname, right_paf_min_repeat_size, right_paf_max_repeat_size))
     if left_paf.strand == '+': 
         candidate_start = left_paf.qstart
         candidate_end = right_paf.qlen - right_paf.qstart
@@ -1205,6 +1218,14 @@ class Round1Estimation:
         self.repeat2_count_range_dict = dict()
         self.potential_repeat_region_dict = dict()
         self.bad_reads_set = set()
+    
+    def output_repeat2_boundaries(self):
+        out_string = ''
+        for readname in self.repeat2_count_range_dict:
+            lower_bound, upper_bound = self.repeat2_count_range_dict[readname]
+            out_string += f'{readname}\t{lower_bound}\t{upper_bound}\n'
+
+        return out_string
 
 class RepeatSize:
     def __init__(self):

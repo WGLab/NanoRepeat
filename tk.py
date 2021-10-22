@@ -432,6 +432,7 @@ def calculate_repeat_size_from_exact_match(cigar, tstart, ref_repeat_start_pos, 
     repeat_size = 0
     cigar_opr_list, cigar_opr_len_list = analysis_cigar_string(cigar)
     current_ref_pos = tstart
+
     for i in range(0, len(cigar_opr_list)):
         cigar_opr = cigar_opr_list[i]
         cigar_opr_len = cigar_opr_len_list[i]
@@ -440,7 +441,9 @@ def calculate_repeat_size_from_exact_match(cigar, tstart, ref_repeat_start_pos, 
                 repeat_size += int(cigar_opr_len/repeat_unit_size)
             elif current_ref_pos + cigar_opr_len >= ref_repeat_start_pos:
                 overlap_len = current_ref_pos + cigar_opr_len - ref_repeat_start_pos
-                if overlap_len > 0: repeat_size += int(overlap_len/repeat_unit_size)
+                if overlap_len > 0: 
+                    repeat_size += int(overlap_len/repeat_unit_size)
+        
             current_ref_pos += cigar_opr_len
         elif cigar_opr == 'X': # mismatch
             current_ref_pos += cigar_opr_len
