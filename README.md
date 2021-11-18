@@ -26,6 +26,7 @@ After the repeat size of each read is determined, AmpRepeat uses the Gaussian mi
 ### 1.2 Joint quantification two adjacent repeats
 
 In some regions, there are two adjacent repeats with very similar sequences. For example, in the HTT gene (cause Huntington's disease), the repeat is `(CAG)m-CAA-CAG-CCG-CCA-(CCG)n` and the CAG and CCG repeats are of variable sizes. In this case, AmpRepeat can perform a joint quantification of the two repeats. 
+
 ![image](https://user-images.githubusercontent.com/9782948/142343820-94211ca0-8f25-4a1f-8991-332b7659c7b4.png)
 
 The joint quantification process has two steps: fast estimation and refining. In the fast estimation step, AmpRepeat performs a quick analysis of each repeat and estimates the lower and upper bound of the two repeat sizes. Let L1, L2 denote the lower bounds of the CAG and CCG repeats, and U1, U2 denote the upper bounds of the two repeats, respectively. In the refining step, AmpRepeat generates a batch of amplicon sequences with m (L1 ≤ m ≤ U1) CAG repeat units and n (L2 ≤ n ≤ U2) CCG repeat units. Each read is aligned to this batch of amplicon sequences with minimap2. The m and n that maximize the alignment score were the estimated CAG and CCG repeat sizes of the read.
