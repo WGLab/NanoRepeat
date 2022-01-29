@@ -35,30 +35,38 @@ from sklearn.mixture import GaussianMixture
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import gzip
 
 import tk
 
 def nanoRepeat_bam (input_args):
-    return
+    
+    '''
+    bam_parser = subparsers.add_parser('bam')
+    bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
+    bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
+    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
+    bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
+    bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
+    bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
+    bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
+    bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
+    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    '''
+    in_bam_file         = input_args.in_bam
     minimap2            = input_args.minimap2
     ref_fasta_file      = input_args.ref_fasta
-    repeat_unit         = input_args.repeat_unit
-    repeat_region       = input_args.repeat_region
-    in_fastq_file       = input_args.in_fq
-    platform            = input_args.platform
-    max_repeat_size     = input_args.max_repeat_size
+    repeat_region_file  = input_args.repeat_region_file
     num_threads         = input_args.num_threads
     out_dir             = input_args.out_dir
     max_anchor_len      = input_args.anchor_len
-    fixed_cutoff_value  = input_args.fixed_cutoff_value
     ploidy              = input_args.ploidy
 
 
-    tk.eprint('NOTICE: input fastq file is: %s' % in_fastq_file)
-    tk.eprint('NOTICE: ref fasta file is: %s' % ref_fasta_file)
-    tk.eprint('NOTICE: output dir is: %s' % out_dir)
-    tk.create_dir(out_dir)
+    tk.eprint(f'NOTICE: input bam file is: {in_bam_file}')
+    tk.eprint(f'NOTICE: ref fasta file is: {ref_fasta_file}')
+    tk.eprint(f'NOTICE: output dir is: {out_dir}')
+
+    os.makedirs(dir, exist_ok=True)
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
     temp_out_dir = os.path.join(out_dir, '%s.AmpRepeat_temp' % in_fastq_prefix)
     tk.create_dir(temp_out_dir)

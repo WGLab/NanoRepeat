@@ -34,10 +34,12 @@ from argparse import RawTextHelpFormatter
 import nanoRepeat_bam
 import nanoRepeat_fq
 
-def parse_user_arguments():
+def main():
+
     program = 'nanoRepeat.py'
-    examples  = f'Examples: \npython {program} bam   -i input.bam   -f hg19.fasta -r repeats.txt -o ./output\n'
-    examples += f'python {program} fastq -i input.fastq -f hg19.fasta -r repeats.txt -o ./output\n'
+    examples  = f'Examples: \n'
+    examples += f'\t1) bam input:   python {program} bam   -i input.bam   -f hg19.fasta -r repeats.txt -o ./output\n'
+    examples += f'\t2) fastq input: python {program} fastq -i input.fastq -f hg19.fasta -r repeats.txt -o ./output\n'
 
     parser = argparse.ArgumentParser(prog = program, description=f'A toolkit for short tandem repeat (STR) quantification from Nanopore long-read sequencing data.', epilog=examples, formatter_class=RawTextHelpFormatter)
     
@@ -51,6 +53,7 @@ def parse_user_arguments():
     bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
     bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
     bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
+    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
 
     fastq_parser = subparsers.add_parser('fastq')
     fastq_parser.add_argument('-i', '--in_fastq', required = True, metavar = 'input.fastq',   type = str, help = 'path to input fastq file')
@@ -61,19 +64,20 @@ def parse_user_arguments():
     fastq_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
     fastq_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
     fastq_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
-    input_args = parser.parse_args()
+    fastq_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    
+    if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-h', '-help', '--help', 'usage']:
+        input_args = parser.parse_args(['--help'])
+    else:
+        input_args = parser.parse_args()
 
-
-    return input_args
-
-def main():
-
-    input_args = parse_user_arguments()
     if input_args.subparser_name == 'bam':
         nanoRepeat_bam.nanoRepeat_bam(input_args)
     elif input_args.subparser_name == 'fastq':
         nanoRepeat_fq.nanoRepeat_fq(input_args)
-    
+    else:
+        input_args = parser.parse_args(['--help'])
+
     return
 
 

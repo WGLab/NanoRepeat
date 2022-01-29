@@ -127,12 +127,8 @@ def gzopen(in_file, mode = 'rt'):
 
 def create_dir(dir):
 
-    if os.path.exists(dir) == False:
-        try:
-            os.makedirs(dir)
-        except:
-            eprint('ERROR: Failed to create directory: %s' % dir)
-            sys.exit()
+    os.makedirs(dir, exist_ok=True)
+
     return
 
 def check_input_file_exists(in_file):
