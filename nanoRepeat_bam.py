@@ -37,38 +37,16 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import tk
-
-def nanoRepeat_bam (input_args):
-    
-    '''
-    bam_parser = subparsers.add_parser('bam')
-    bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
-    bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
-    bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
-    bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
-    bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
-    bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
-    bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
-    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
-    '''
-    in_bam_file         = input_args.in_bam
-    minimap2            = input_args.minimap2
-    ref_fasta_file      = input_args.ref_fasta
-    repeat_region_file  = input_args.repeat_region_file
-    num_threads         = input_args.num_threads
-    out_dir             = input_args.out_dir
-    max_anchor_len      = input_args.anchor_len
-    ploidy              = input_args.ploidy
+from repeat_region import *
 
 
-    tk.eprint(f'NOTICE: input bam file is: {in_bam_file}')
-    tk.eprint(f'NOTICE: ref fasta file is: {ref_fasta_file}')
-    tk.eprint(f'NOTICE: output dir is: {out_dir}')
 
-    os.makedirs(dir, exist_ok=True)
+
+
+'''
+
     in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    temp_out_dir = os.path.join(out_dir, '%s.AmpRepeat_temp' % in_fastq_prefix)
+    
     tk.create_dir(temp_out_dir)
 
     repeat_chr, repeat_start, repeat_end = analysis_repeat_region(repeat_region)
@@ -741,24 +719,6 @@ def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor
     return 
 
 
-def analysis_repeat_region(repeat_region):
-
-    a = repeat_region.split(':')
-    if len(a) != 2:
-        tk.eprint('ERROR! --repeat_region should be in the format of chr:start-end (e.g. chr4:3074876-3074939)!')
-        sys.exit(1)
-    
-    repeat_chr = a[0]
-
-    b = a[1].split('-')
-    if len(b) != 2:
-        tk.eprint('ERROR! --repeat_region should be in the format of chr:start-end (e.g. chr4:3074876-3074939)!')
-        sys.exit(1)
-
-    repeat_start = int(b[0])-1
-    repeat_end = int(b[1])
-
-    return repeat_chr, repeat_start, repeat_end
 
 class Metainfo:
     def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
@@ -794,6 +754,71 @@ class FastqChunk:
         self.fn = fn
         self.fp = fp
 
+'''
 
-if __name__ == '__main__':
-    main()
+
+
+def quantify1repeat_from_bam(input_args, ref_fasta_dict, repeat_region):
+    
+    in_bam_file         = input_args.in_bam
+    samtools            = input_args.samtools
+    minimap2            = input_args.minimap2
+    ref_fasta_file      = input_args.ref_fasta
+    repeat_region_file  = input_args.repeat_regions
+    num_threads         = input_args.num_threads
+    out_dir             = input_args.out_dir
+    max_anchor_len      = input_args.anchor_len
+    ploidy              = input_args.ploidy
+
+    temp_out_dir = os.path.join(out_dir, f'{repeat_region.to_unique_id()}')
+    os.makedirs(temp_out_dir, exist_ok=True)
+    in_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
+    cmd = f'{samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | samtools fastq - > {in_fq_file}'
+    tk.run_system_cmd(cmd)
+
+
+def nanoRepeat_bam (input_args):
+    
+    '''
+    bam_parser = subparsers.add_parser('bam')
+    bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
+    bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
+    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
+    bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
+    bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
+    bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
+    bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
+    bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
+    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    '''
+
+    input_args.in_bam         = os.path.abspath(input_args.in_bam)
+    input_args.ref_fasta      = os.path.abspath(input_args.ref_fasta)
+    input_args.out_dir        = os.path.abspath(input_args.out_dir)
+    input_args.repeat_regions = os.path.abspath(input_args.repeat_regions)
+
+
+    tk.eprint(f'NOTICE: input bam file is: {input_args.in_bam}')
+    tk.eprint(f'NOTICE: ref fasta file is: {input_args.ref_fasta}')
+    tk.eprint(f'NOTICE: output dir is: {input_args.out_dir}')
+    tk.eprint(f'NOTICE: repeat region file is: {input_args.repeat_regions}')
+    
+    os.makedirs(input_args.out_dir, exist_ok=True)
+
+    tk.eprint(f'NOTICE: reading repeat region file: {input_args.repeat_regions}')
+    repeat_region_list = read_repeat_region_file(input_args.repeat_regions)
+
+    tk.eprint(f'NOTICE: reading referece fasta file: {input_args.ref_fasta}')
+    ref_fasta_dict = tk.fasta_file2dict(input_args.ref_fasta)
+
+    '''
+    for seq_name in ref_fasta_dict:
+        seq_len = len(ref_fasta_dict[seq_name])
+        tk.eprint(f'{seq_name}\t{seq_len}')
+    '''
+    
+    for repeat_region in repeat_region_list:
+        tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
+        quantify1repeat(input_args, ref_fasta_dict, repeat_region)
+
+    return

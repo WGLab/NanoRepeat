@@ -32,6 +32,7 @@ import gzip
 from datetime import datetime
 import distutils
 from distutils import spawn
+from timeit import repeat
 
 TimeFormat = '%m/%d/%Y %H:%M:%S'
 
@@ -178,6 +179,36 @@ def count_fastq (in_fastq_file):
     in_fastq_fp.close()
 
     return n_reads
+
+def fasta_file2dict(fasta_file):
+
+    fasta_fp = gzopen(fasta_file)
+    fasta_dict = dict()
+
+    curr_name = ''
+    curr_seq = ''
+
+    while 1:
+        line = fasta_fp.readline()
+        if not line: break
+        line = line.strip()
+        if not line: continue 
+        if line[0] ==  '>':
+            if len(curr_seq) > 0 and len(curr_name) > 0:
+                assert curr_name not in fasta_dict
+                fasta_dict[curr_name] = curr_seq
+            curr_name = line[1:].split()[0]
+            curr_seq = ''
+            continue
+
+        curr_seq += line
+     
+    fasta_fp.close()
+
+    if len(curr_seq) > 0 and len(curr_name) > 0:
+        fasta_dict[curr_name] = curr_seq
+    
+    return fasta_dict
 
 def read_fasta_file(fasta_file):
 

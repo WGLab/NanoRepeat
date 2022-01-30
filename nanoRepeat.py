@@ -47,7 +47,7 @@ def main():
     bam_parser = subparsers.add_parser('bam')
     bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
     bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
+    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
     bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
     bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
     bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
