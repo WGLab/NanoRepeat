@@ -32,56 +32,90 @@ import argparse
 from argparse import RawTextHelpFormatter
 
 import nanoRepeat_bam
-import nanoRepeat_fq
+import tk
+from repeat_region import *
+
+def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
+    
+    cmd = f'{minimap2} -ax map-ont -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {bam_prefix}.sam'
+    tk.run_system_cmd(cmd)
+
+    cmd = f'{samtools} sort -@ {num_cpu} -o {bam_prefix}.sorted.bam {bam_prefix}.sam'
+    tk.run_system_cmd(cmd)
+
+    cmd = f'{samtools} index {bam_prefix}.sorted.bam'
+    tk.run_system_cmd(cmd)
+
+    return f'{bam_prefix}.sorted.bam'
+
+def preprocess_fastq(input_args):
+    
+    in_fastq_filename = os.path.split(input_args.input)[1]
+    bam_prefix        = os.path.join(input_args.out_dir, f'{in_fastq_filename}.minimap2')
+    in_bam_file       = map_fastq_to_ref_genome(input_args.input, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
+    
+    nanoRepeat_bam.nanoRepeat_bam(input_args, in_bam_file)
+    return
 
 def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t1) bam input:   python {program} bam   -i input.bam   -f hg19.fasta -r repeats.txt -o ./output\n'
-    examples += f'\t2) fastq input: python {program} fastq -i input.fastq -f hg19.fasta -r repeats.txt -o ./output\n'
-
-    parser = argparse.ArgumentParser(prog = program, description=f'A toolkit for short tandem repeat (STR) quantification from Nanopore long-read sequencing data.', epilog=examples, formatter_class=RawTextHelpFormatter)
+    examples += f'\t1) python {program} -i input.bam   -t bam   -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
+    examples += f'\t2) python {program} -i input.fastq -t fastq -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
+    examples += f'\t3) python {program} -i input.fasta -t fasta -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
     
-    subparsers = parser.add_subparsers(dest="subparser_name") # this line changed
-    bam_parser = subparsers.add_parser('bam')
-    bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
-    bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
-    bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
-    bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
-    bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
-    bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
-    bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
-    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
-    fastq_parser = subparsers.add_parser('fastq')
-    fastq_parser.add_argument('-i', '--in_fastq', required = True, metavar = 'input.fastq',   type = str, help = 'path to input fastq file')
-    fastq_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    fastq_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
-    fastq_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
-    fastq_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
-    fastq_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
-    fastq_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
-    fastq_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
-    fastq_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    # required
+    parser.add_argument('-i', '--input', required = True, metavar = 'input_file', type = str, help = '(required) path to input file (supported format: sorted_bam, fastq or fasta)')
+    parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
+    parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
+    parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
+    parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
     
-    if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-h', '-help', '--help', 'usage']:
+    # optional 
+    parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
+    parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
+    parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
+    parser.add_argument('--ploidy',   required = False, metavar = 'INT', type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
+    parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+
+    
+    if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
         input_args = parser.parse_args(['--help'])
     else:
         input_args = parser.parse_args()
 
-    if input_args.subparser_name == 'bam':
-        nanoRepeat_bam.nanoRepeat_bam(input_args)
-    elif input_args.subparser_name == 'fastq':
-        nanoRepeat_fq.nanoRepeat_fq(input_args)
-    else:
-        input_args = parser.parse_args(['--help'])
+    input_args.type = input_args.type.lower()
+    if input_args.type not in ['bam', 'fastq', 'fasta']:
+        tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
+        sys.exit(1)
+    
+    input_args.input             = os.path.abspath(input_args.input)
+    input_args.ref_fasta         = os.path.abspath(input_args.ref_fasta)
+    input_args.out_dir           = os.path.abspath(input_args.out_dir)
+    input_args.repeat_region_bed = os.path.abspath(input_args.repeat_region_bed)
 
+    tk.eprint(f'NOTICE: input file is: {input_args.input}')
+    tk.eprint(f'NOTICE: input type is: {input_args.type}')
+    tk.eprint(f'NOTICE: referece fasta file is: {input_args.ref_fasta}')
+    tk.eprint(f'NOTICE: output dir is: {input_args.out_dir}')
+    tk.eprint(f'NOTICE: repeat region bed file is: {input_args.repeat_region_bed}')
+
+    os.makedirs(input_args.out_dir, exist_ok=True)
+    if input_args.type == 'fastq':
+        preprocess_fastq(input_args)
+    elif input_args.type == 'fasta':
+        preprocess_fastq(input_args)
+    elif input_args.type == 'bam':
+        nanoRepeat_bam.nanoRepeat_bam(input_args, input_args.input)
+    else:
+        tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
+        sys.exit(1)
+    
     return
 
-
-    
 
 if __name__ == '__main__':
     main()

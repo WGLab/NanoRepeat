@@ -32,12 +32,25 @@ import sys
 
 class RepeatRegion:
     def __init__(self, line = None):
-        if line == None: 
-            self.chrom = None
-            self.start_pos = None
-            self.end_pos = None
-            self.repeat_unit_seq = None
-        else:
+        self.left_anchor_seq = None
+        self.right_anchor_seq = None
+        
+        self.left_anchor_len = None
+        self.right_anchor_len = None
+        self.anchor_len = None
+        self.region_ref_name = None
+        self.region_ref_seq = None
+
+        self.region_fq_file = None
+        self.region_fasta_file = None # template
+
+        self.chrom = None
+        self.start_pos = None
+        self.end_pos = None
+        self.repeat_unit_seq = None
+        self.max_repeat_size = None
+    
+        if line != None:
             col_list = line.strip().split('\t')
             if len(col_list) < 4:
                 sys.stderr.write('ERROR! the repeat region bed file should be tab-delimited and have 4 columns: chrom, start_position, end_position, repeat_unit. start_position and end_position should be 0-based')
@@ -46,14 +59,13 @@ class RepeatRegion:
             self.chrom, self.start_pos, self.end_pos, self.repeat_unit_seq = col_list[0:4]
             self.start_pos = int(self.start_pos)
             self.end_pos = int(self.end_pos)
-        
+    
     def to_invertal(self, flank_dist = 0):
         assert (flank_dist >= 0)
         start_pos = self.start_pos - flank_dist
         end_pos = self.end_pos + flank_dist
         if start_pos < 0: start_pos = 0
         return f'{self.chrom}:{start_pos}-{end_pos}'
-
 
     def to_unique_id(self):
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{self.repeat_unit_seq}'

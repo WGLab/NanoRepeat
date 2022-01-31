@@ -28,7 +28,11 @@ SOFTWARE.
 
 import os
 import sys
+from timeit import repeat
+from turtle import end_poly
 import numpy as np
+import tk
+from repeat_region import *
 
 from numpy.f2py.auxfuncs import containsmodule
 from sklearn.mixture import GaussianMixture
@@ -36,110 +40,95 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import tk
-from repeat_region import *
+def make_region_reference(ref_fasta_dict, repeat_region, anchor_len):
 
+    assert(anchor_len) > 20
 
-
-
-
-'''
-
-    in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
+    chr_name = repeat_region.chrom
+    if chr_name not in ref_fasta_dict:
+        if 'chr' == chr_name[0:3]:
+            chr_name = chr_name[3:]
+        else:
+            chr_name = 'chr' + chr_name
+    if chr_name not in ref_fasta_dict:
+        tk.eprint(f'ERROR! the following chromosome in repeat region bed file was not found in the reference fasta file: {repeat_region.chrom}')
+        sys.exit()
     
-    tk.create_dir(temp_out_dir)
+    chr_seq = ref_fasta_dict[chr_name]
+    chr_len = len(chr_seq)
 
-    repeat_chr, repeat_start, repeat_end = analysis_repeat_region(repeat_region)
+    if repeat_region.start_pos > chr_len:
+        tk.eprint(f'ERROR! the repeat start position is larger than chromosome length: {repeat_region.start_pos}. chromosome length = {chr_len}')
+        sys.exit()
+    
+    if repeat_region.start_pos < 0:
+        tk.eprint(f'ERROR! the repeat start position < 0')
+        sys.exit()
 
-    print('DEBUG: repeat_start=%d, repeat_end=%d' % (repeat_start, repeat_end))
+    if repeat_region.end_pos > chr_len + 1:
+        tk.eprint(f'ERROR! the repeat end position is larger than chromosome length: {repeat_region.end_pos}. chromosome length = {chr_len}')
+        sys.exit()
+    
+    if repeat_region.end_pos < repeat_region.start_pos:
+        tk.eprint(f'ERROR! end position is smaller than start position: {repeat_region.to_invertal()}')
+        sys.exit()
+
+    start_pos = repeat_region.start_pos - anchor_len
+    end_pos = repeat_region.end_pos + anchor_len
+    if start_pos < 0: 
+        start_pos = 0
+    
+    if end_pos > chr_len:
+        end_pos = chr_len
+    
+    repeat_region.left_anchor_seq = chr_seq[start_pos:repeat_region.start_pos]
+    repeat_region.left_anchor_len = len(repeat_region.left_anchor_seq)
+
+    repeat_region.right_anchor_seq = chr_seq[repeat_region.end_pos:end_pos]
+    repeat_region.right_anchor_len = len(repeat_region.right_anchor_seq)
+
+    repeat_region.region_ref_seq = chr_seq[start_pos:end_pos]
+    repeat_region.region_ref_name = repeat_region.to_unique_id()
+
+    if repeat_region.left_anchor_len == 0 and repeat_region.right_anchor_len:
+        tk.eprint('ERROR! there is no flanking sequence around the repeat region! ')
+        sys.exit(1)
+
+    region_fasta_f = open(repeat_region.region_fasta_file, 'w')
+    region_fasta_f.write(f'>{repeat_region.region_ref_name}\n')
+    region_fasta_f.write(f'{repeat_region.region_ref_seq}\n')
+    region_fasta_f.close()
+    
+    return
+
+def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region):
+
+    temp_out_dir = os.path.join(input_args.out_dir, f'{repeat_region.to_unique_id()}')
+    os.makedirs(temp_out_dir, exist_ok=True)
+
+    # make region fq file
+    repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
+    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | samtools fastq - > {repeat_region.region_fq_file}'
+    tk.run_system_cmd(cmd)
+
+    # make region ref fasta file
+    repeat_region.region_fasta_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.ref.fasta')
+    make_region_reference(ref_fasta_dict, repeat_region, input_args.anchor_len)
+    
+    # intitial estimation
     tk.eprint('NOTICE: intitial estimation of repeat size...')
-    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, temp_out_dir)
+    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu, temp_out_dir)
     
-    fine_tuned_repeat_count_dict = fine_tune_read_count(first_round_repeat_count_dict, potential_repeat_region_dict, in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, temp_out_dir)
+    fine_tuned_repeat_count_dict = fine_tune_read_count(input_args.minimap2, input_args.num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, temp_out_dir)
 
     for readname in bad_reads_set:
         fine_tuned_repeat_count_dict.pop(readname, None)
 
     tk.eprint('NOTICE: assigned repeat size to %d reads.' % len(fine_tuned_repeat_count_dict))
-    if fixed_cutoff_value >= 0:
-        split_allele_using_fixed_cutoff_value (fixed_cutoff_value, fine_tuned_repeat_count_dict, in_fastq_file, out_dir)
-    else:
-        split_allele_using_gmm(ploidy, fine_tuned_repeat_count_dict, in_fastq_file, out_dir)
+ 
+    split_allele_using_gmm(input_args.ploidy, fine_tuned_repeat_count_dict, repeat_region.region_fq_file, input_args.out_dir)
     
-    cmd = f'rm -r {temp_out_dir}'
-    tk.run_system_cmd(cmd)
-    tk.eprint('NOTICE: program finished. output files are here: %s' % out_dir)
-
-    return
-
-def split_allele_using_fixed_cutoff_value (fixed_cutoff_value, read_repeat_count_dict, in_fastq_file, out_dir):
-
-    in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    in_fastq_filename = os.path.split(in_fastq_file)[1]
-    out_prefix = '%s.fixed_cutoff_%d' % (in_fastq_prefix, fixed_cutoff_value)
-
-    out_allele1_fastq_file = os.path.join(out_dir, '%s.allele1.fastq' % (out_prefix))
-    out_allele2_fastq_file = os.path.join(out_dir, '%s.allele2.fastq' % (out_prefix))
-    out_summray_file       = os.path.join(out_dir, '%s.summary.txt' % (out_prefix))
-    hist_figure_file       = os.path.join(out_dir, '%s.hist.png' % (out_prefix))
-
-    allele1_repeat_count_list = list()
-    allele2_repeat_count_list = list()
-
-    in_fastq_fp = tk.gzopen(in_fastq_file)
-    out_allele1_fastq_fp = open(out_allele1_fastq_file, 'w')
-    out_allele2_fastq_fp = open(out_allele2_fastq_file, 'w')
-    while 1:
-        line1 = in_fastq_fp.readline()
-        line2 = in_fastq_fp.readline()
-        line3 = in_fastq_fp.readline()
-        line4 = in_fastq_fp.readline()
-
-        if not line1: break
-        if not line2: break
-        if not line3: break
-        if not line4: break
-
-        readname = line1.strip().split()[0][1:]
-        if readname not in read_repeat_count_dict: continue
-
-        repeat_count = read_repeat_count_dict[readname]
-        if repeat_count < fixed_cutoff_value:
-            allele1_repeat_count_list.append(repeat_count)
-            out_allele1_fastq_fp.write(line1 + line2 + line3 + line4)
-        else:
-            allele2_repeat_count_list.append(repeat_count)
-            out_allele2_fastq_fp.write(line1 + line2 + line3 + line4)
-
-    in_fastq_fp.close()
-    out_allele1_fastq_fp.close()
-    out_allele2_fastq_fp.close()
-
-    read_repeat_count_list = list()
-    for readname, repeat_size in read_repeat_count_dict.items():
-        if repeat_size < fixed_cutoff_value:
-            allele_id = 1
-        else:
-            allele_id = 2
-        tup = (readname, repeat_size, allele_id)
-        read_repeat_count_list.append(tup)
-    read_repeat_count_list.sort(key = lambda x:x[1])
-
-    metainfo1 = Metainfo().init_from_repeat_size_list(allele1_repeat_count_list, 1)
-    metainfo2 = Metainfo().init_from_repeat_size_list(allele2_repeat_count_list, 2)
-
-    out_summray_fp = open(out_summray_file, 'w')
-    header = f'##{in_fastq_filename}\tfixed_cutoff={fixed_cutoff_value}\t{metainfo1.output()}\t{metainfo2.output()}\n'
-    out_summray_fp.write(header)
-    out_summray_fp.write('#readname\trepeat_size\tallele\n')
-    for tup in read_repeat_count_list:
-        out_summray_fp.write(f'{tup[0]}\t{int(tup[1])}\t{tup[2]}\n')
-    out_summray_fp.close()
-
-    each_allele_repeat_count_2d_list = [allele1_repeat_count_list, allele2_repeat_count_list]
-    predicted_repeat_count_list      = [metainfo1.predicted_repeat_size, metainfo2.predicted_repeat_size]
-
-    plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_list, hist_figure_file)
+    tk.eprint('NOTICE: program finished. output files are here: %s' % input_args.out_dir)
 
     return
 
@@ -169,7 +158,6 @@ def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_di
     if num_data_points < 1:
         sys.stderr.write('ERROR! no enough reads!')
         sys.stderr.write('ERROR! number of reads passed filtering: %d' % num_data_points)
-        sys.exit()
 
     best_n_components = chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, cov_type)
     #best_n_components = ploidy
@@ -413,7 +401,12 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
     
     return
 
-def fine_tune_read_count(first_round_repeat_count_dict, potential_repeat_region_dict, in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, out_dir):
+def fine_tune_read_count(minimap2, num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, out_dir):
+    
+    in_fastq_file = repeat_region.region_fq_file
+    repeat_unit = repeat_region.repeat_unit_seq
+    max_repeat_size = repeat_region.max_repeat_size
+    platform = 'ont'
 
     first_round_max_repeat_size = 0
     for readname, value in first_round_repeat_count_dict.items():
@@ -426,8 +419,9 @@ def fine_tune_read_count(first_round_repeat_count_dict, potential_repeat_region_
     tk.eprint('NOTICE: fine-tuning repeat size')
     fine_tuned_repeat_count_dict = dict()
 
-    repeat_chrom_seq  = tk.read_one_chr_from_fasta_file(ref_fasta_file, repeat_chr)
-    left_anchor_seq, right_anchor_seq = tk.extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
+    left_anchor_seq = repeat_region.left_anchor_seq
+    right_anchor_seq = repeat_region.right_anchor_seq
+    
     left_anchor_len = len(left_anchor_seq)
     right_anchor_len = len(right_anchor_seq)
     repeat_unit_size = len(repeat_unit)
@@ -465,7 +459,7 @@ def fine_tune_read_count(first_round_repeat_count_dict, potential_repeat_region_
                 additional_para = tk.minimap2_mid_para
             else:
                 additional_para = ''
-            cmd = f'{minimap2} {additional_para} -A 2 -B 5 -N 1 -c --eqx --cs -t {num_threads} -x {preset} {chunk_ref_fasta_file} {fastq_chunk.fn} >> {chunk_paf_file} 2> /dev/null'
+            cmd = f'{minimap2} {additional_para} -A 2 -B 5 -N 1 -c --eqx --cs -t {num_cpu} -x {preset} {chunk_ref_fasta_file} {fastq_chunk.fn} >> {chunk_paf_file} 2> /dev/null'
             tk.run_system_cmd(cmd)
         
         second_round_estimation_from_paf(chunk_paf_file, left_anchor_len, right_anchor_len, repeat_unit, fine_tuned_repeat_count_dict)
@@ -572,38 +566,49 @@ def split_input_fastq_file_by_repeat_size(first_round_max_repeat_count_dict, pot
 
     return fastq_chunk_list
 
-def initial_estimation(in_fastq_file, ref_fasta_file, repeat_unit, repeat_chr, repeat_start, repeat_end, max_repeat_size, minimap2, platform, num_threads, max_anchor_len, out_dir):
+def get_max_read_length_from_fastq(fq_file):
+
+    max_read_length = 0
+    fq_f = open(fq_file, 'r')
+    while 1:
+        line = fq_f.readline()
+        if not line: break
+        if len(line)-1 > max_read_length:
+            max_read_length = len(line)-1
+    fq_f.close()
+
+    return max_read_length
+
+def initial_estimation(minimap2, repeat_region, num_cpu, temp_out_dir):
     
-    repeat_chrom_seq  = tk.read_one_chr_from_fasta_file(ref_fasta_file, repeat_chr)
-    left_anchor_seq, right_anchor_seq = tk.extract_anchor_sequence(repeat_chrom_seq, repeat_start, repeat_end, max_anchor_len)
-    
-    ## make template fasta file ##
-    template_repeat_size = max_repeat_size + 10
-    template_fasta_file = os.path.join(out_dir, 'templates.fasta')
-   
-    left_template_seq = left_anchor_seq + repeat_unit * template_repeat_size
-    left_template_name = 'left_anchor_%d_%d' % (len(left_anchor_seq), template_repeat_size)
-    
-    right_template_seq = repeat_unit * template_repeat_size + right_anchor_seq
-    right_template_seq = tk.rev_comp(right_template_seq)
-    right_template_name = 'right_anchor_%d_%d_revc' % (len(right_anchor_seq), template_repeat_size)
-  
-    template_fasta_fp = open(template_fasta_file, 'w')
+    max_read_length      = get_max_read_length_from_fastq(repeat_region.region_fq_file)
+    template_repeat_size = int(1.5 * max_read_length / len(repeat_region.repeat_unit_seq) + 100)
+    repeat_region.max_repeat_size = template_repeat_size
+    template_fasta_file  = os.path.join(temp_out_dir, 'templates.fasta')
+
+    left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
+    left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
+
+    right_template_seq   = repeat_region.repeat_unit_seq * template_repeat_size + repeat_region.right_anchor_seq
+    right_template_seq   = tk.rev_comp(right_template_seq)
+    right_template_name  = 'right_anchor_%d_%d_revc' % (len(repeat_region.right_anchor_seq), template_repeat_size)
+
+    template_fasta_fp    = open(template_fasta_file, 'w')
     template_fasta_fp.write('>%s\n' % left_template_name)
     template_fasta_fp.write('%s\n' % left_template_seq)
     template_fasta_fp.write('>%s\n' % right_template_name)
     template_fasta_fp.write('%s\n' % right_template_seq)
     template_fasta_fp.close()
 
-    first_round_paf_file = os.path.join(out_dir, 'first_round.paf')
-    preset = tk.get_preset_for_minimap2(platform)
-    cmd = f'{minimap2} -A 2 -B 5 -c --eqx -t {num_threads} -x {preset} {template_fasta_file} {in_fastq_file} > {first_round_paf_file} 2> /dev/null'
+    first_round_paf_file = os.path.join(temp_out_dir, 'first_round.paf')
+    preset = tk.get_preset_for_minimap2('ont')
+    cmd = f'{minimap2} -A 2 -B 5 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {first_round_paf_file} 2> /dev/null'
 
     tk.eprint('NOTICE: first round alignment')
     tk.run_system_cmd(cmd)
     tk.eprint('NOTICE: first round alignment finished')
 
-    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = first_round_estimation_from_paf(first_round_paf_file, len(left_anchor_seq), len(right_anchor_seq), repeat_unit)
+    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = first_round_estimation_from_paf(first_round_paf_file, len(repeat_region.left_anchor_seq), len(repeat_region.right_anchor_seq), repeat_region.repeat_unit_seq)
     
     return first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set
 
@@ -719,7 +724,6 @@ def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor
     return 
 
 
-
 class Metainfo:
     def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
         self.allele_id = allele_id
@@ -744,7 +748,7 @@ class Metainfo:
         return self
 
     def output(self):
-        return '%d\t%d\t%d\t%d\t%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
+        return 'allele_id=%d\tnum_reads=%d\tpredicted_repeat_size=%d\tmin_repeat_size=%d\tmax_repeat_size=%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
 
 
 class FastqChunk:
@@ -754,71 +758,17 @@ class FastqChunk:
         self.fn = fn
         self.fp = fp
 
-'''
 
-
-
-def quantify1repeat_from_bam(input_args, ref_fasta_dict, repeat_region):
+def nanoRepeat_bam (input_args, in_bam_file):
     
-    in_bam_file         = input_args.in_bam
-    samtools            = input_args.samtools
-    minimap2            = input_args.minimap2
-    ref_fasta_file      = input_args.ref_fasta
-    repeat_region_file  = input_args.repeat_regions
-    num_threads         = input_args.num_threads
-    out_dir             = input_args.out_dir
-    max_anchor_len      = input_args.anchor_len
-    ploidy              = input_args.ploidy
-
-    temp_out_dir = os.path.join(out_dir, f'{repeat_region.to_unique_id()}')
-    os.makedirs(temp_out_dir, exist_ok=True)
-    in_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
-    cmd = f'{samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | samtools fastq - > {in_fq_file}'
-    tk.run_system_cmd(cmd)
-
-
-def nanoRepeat_bam (input_args):
-    
-    '''
-    bam_parser = subparsers.add_parser('bam')
-    bam_parser.add_argument('-i', '--in_bam', required = True, metavar = 'input.bam',   type = str, help = '(required) path to input bam file (must be sorted by coordinates)')
-    bam_parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    bam_parser.add_argument('-r', '--repeat_regions', required = True, metavar = 'repeat_regions.txt', type = str, help = '(required) path to repeat region file')
-    bam_parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
-    bam_parser.add_argument('-t', '--num_threads', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of threads used by minimap2 (default: 1)')
-    bam_parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
-    bam_parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
-    bam_parser.add_argument('--ploidy',   required = False, metavar = 'INT',   type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
-    bam_parser.add_argument('--anchor_len', required = False, metavar = 'INT',   type = int, default = 256, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
-    '''
-
-    input_args.in_bam         = os.path.abspath(input_args.in_bam)
-    input_args.ref_fasta      = os.path.abspath(input_args.ref_fasta)
-    input_args.out_dir        = os.path.abspath(input_args.out_dir)
-    input_args.repeat_regions = os.path.abspath(input_args.repeat_regions)
-
-
-    tk.eprint(f'NOTICE: input bam file is: {input_args.in_bam}')
-    tk.eprint(f'NOTICE: ref fasta file is: {input_args.ref_fasta}')
-    tk.eprint(f'NOTICE: output dir is: {input_args.out_dir}')
-    tk.eprint(f'NOTICE: repeat region file is: {input_args.repeat_regions}')
-    
-    os.makedirs(input_args.out_dir, exist_ok=True)
-
-    tk.eprint(f'NOTICE: reading repeat region file: {input_args.repeat_regions}')
-    repeat_region_list = read_repeat_region_file(input_args.repeat_regions)
+    tk.eprint(f'NOTICE: reading repeat region file: {input_args.repeat_region_bed}')
+    repeat_region_list = read_repeat_region_file(input_args.repeat_region_bed)
 
     tk.eprint(f'NOTICE: reading referece fasta file: {input_args.ref_fasta}')
     ref_fasta_dict = tk.fasta_file2dict(input_args.ref_fasta)
-
-    '''
-    for seq_name in ref_fasta_dict:
-        seq_len = len(ref_fasta_dict[seq_name])
-        tk.eprint(f'{seq_name}\t{seq_len}')
-    '''
     
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
-        quantify1repeat(input_args, ref_fasta_dict, repeat_region)
+        quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
 
     return
