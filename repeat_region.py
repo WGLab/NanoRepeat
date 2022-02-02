@@ -37,9 +37,9 @@ class RepeatRegion:
         
         self.left_anchor_len = None
         self.right_anchor_len = None
+
         self.anchor_len = None
-        self.region_ref_name = None
-        self.region_ref_seq = None
+        self.mid_ref_seq = None
 
         self.region_fq_file = None
         self.region_fasta_file = None # template
@@ -49,6 +49,11 @@ class RepeatRegion:
         self.end_pos = None
         self.repeat_unit_seq = None
         self.max_repeat_size = None
+
+        self.temp_out_dir = None
+        self.final_out_dir = None
+
+        self.temp_file_list = []
     
         if line != None:
             col_list = line.strip().split('\t')

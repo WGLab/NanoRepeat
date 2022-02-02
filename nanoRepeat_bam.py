@@ -27,8 +27,10 @@ SOFTWARE.
 '''
 
 import os
+import string
 import sys
 from timeit import repeat
+from tokenize import String
 from turtle import end_poly
 import numpy as np
 import tk
@@ -40,9 +42,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-def make_region_reference(ref_fasta_dict, repeat_region, anchor_len):
+def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
 
-    assert(anchor_len) > 20
+    MIN_ANCHOR_LEN = 10
+    if repeat_region.anchor_len < MIN_ANCHOR_LEN:
+        tk.eprint('WARNING: anchor_len must be >= 10!')
+        repeat_region.anchor_len = 10
 
     chr_name = repeat_region.chrom
     if chr_name not in ref_fasta_dict:
@@ -73,51 +78,52 @@ def make_region_reference(ref_fasta_dict, repeat_region, anchor_len):
         tk.eprint(f'ERROR! end position is smaller than start position: {repeat_region.to_invertal()}')
         sys.exit()
 
-    start_pos = repeat_region.start_pos - anchor_len
-    end_pos = repeat_region.end_pos + anchor_len
+    start_pos = repeat_region.start_pos - repeat_region.anchor_len
+    end_pos = repeat_region.end_pos + repeat_region.anchor_len
     if start_pos < 0: 
         start_pos = 0
     
     if end_pos > chr_len:
         end_pos = chr_len
     
-    repeat_region.left_anchor_seq = chr_seq[start_pos:repeat_region.start_pos]
-    repeat_region.left_anchor_len = len(repeat_region.left_anchor_seq)
+    repeat_region.left_anchor_seq  = chr_seq[start_pos:repeat_region.start_pos]
+    repeat_region.left_anchor_len  = len(repeat_region.left_anchor_seq)
 
     repeat_region.right_anchor_seq = chr_seq[repeat_region.end_pos:end_pos]
     repeat_region.right_anchor_len = len(repeat_region.right_anchor_seq)
 
-    repeat_region.region_ref_seq = chr_seq[start_pos:end_pos]
-    repeat_region.region_ref_name = repeat_region.to_unique_id()
+    repeat_region.mid_ref_seq      = chr_seq[repeat_region.start_pos:repeat_region.end_pos] # repeat sequence in the ref genome
 
-    if repeat_region.left_anchor_len == 0 and repeat_region.right_anchor_len:
+    if repeat_region.left_anchor_len == 0 and repeat_region.right_anchor_len == 0:
         tk.eprint('ERROR! there is no flanking sequence around the repeat region! ')
         sys.exit(1)
 
-    region_fasta_f = open(repeat_region.region_fasta_file, 'w')
-    region_fasta_f.write(f'>{repeat_region.region_ref_name}\n')
-    region_fasta_f.write(f'{repeat_region.region_ref_seq}\n')
-    region_fasta_f.close()
+    if repeat_region.left_anchor_len < MIN_ANCHOR_LEN and repeat_region.right_anchor_len < MIN_ANCHOR_LEN:
+        tk.eprint(f'ERROR! both left and right flanking sequences are less than {MIN_ANCHOR_LEN} bp. The quantification might not be accurate!')
+        sys.exit(1)
     
     return
 
-def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region):
+def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
 
     temp_out_dir = os.path.join(input_args.out_dir, f'{repeat_region.to_unique_id()}')
     os.makedirs(temp_out_dir, exist_ok=True)
 
-    # make region fq file
+    repeat_region.temp_out_dir = temp_out_dir
+    repeat_region.final_out_dir = input_args.out_dir
+    repeat_region.anchor_len = input_args.anchor_len
+
+    # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
     cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | samtools fastq - > {repeat_region.region_fq_file}'
     tk.run_system_cmd(cmd)
 
-    # make region ref fasta file
-    repeat_region.region_fasta_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.ref.fasta')
-    make_region_reference(ref_fasta_dict, repeat_region, input_args.anchor_len)
+    # extract ref sequence
+    extract_ref_sequence(ref_fasta_dict, repeat_region)
     
     # intitial estimation
     tk.eprint('NOTICE: intitial estimation of repeat size...')
-    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu, temp_out_dir)
+    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
     
     fine_tuned_repeat_count_dict = fine_tune_read_count(input_args.minimap2, input_args.num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, temp_out_dir)
 
@@ -579,19 +585,19 @@ def get_max_read_length_from_fastq(fq_file):
 
     return max_read_length
 
-def initial_estimation(minimap2, repeat_region, num_cpu, temp_out_dir):
+def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     
-    max_read_length      = get_max_read_length_from_fastq(repeat_region.region_fq_file)
-    template_repeat_size = int(1.5 * max_read_length / len(repeat_region.repeat_unit_seq) + 100)
-    repeat_region.max_repeat_size = template_repeat_size
-    template_fasta_file  = os.path.join(temp_out_dir, 'templates.fasta')
-
+    template_repeat_size = 5
+    
     left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
     left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
 
     right_template_seq   = repeat_region.repeat_unit_seq * template_repeat_size + repeat_region.right_anchor_seq
     right_template_seq   = tk.rev_comp(right_template_seq)
     right_template_name  = 'right_anchor_%d_%d_revc' % (len(repeat_region.right_anchor_seq), template_repeat_size)
+
+    template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'templates.fasta')
+    repeat_region.temp_file_list.append(template_fasta_file)
 
     template_fasta_fp    = open(template_fasta_file, 'w')
     template_fasta_fp.write('>%s\n' % left_template_name)
@@ -600,9 +606,10 @@ def initial_estimation(minimap2, repeat_region, num_cpu, temp_out_dir):
     template_fasta_fp.write('%s\n' % right_template_seq)
     template_fasta_fp.close()
 
-    first_round_paf_file = os.path.join(temp_out_dir, 'first_round.paf')
+    first_round_paf_file = os.path.join(repeat_region.temp_out_dir, 'first_round.paf')
+    repeat_region.temp_file_list.append(first_round_paf_file)
     preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -A 2 -B 5 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {first_round_paf_file} 2> /dev/null'
+    cmd = f'{minimap2} -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {first_round_paf_file} 2> /dev/null'
 
     tk.eprint('NOTICE: first round alignment')
     tk.run_system_cmd(cmd)

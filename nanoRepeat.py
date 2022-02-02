@@ -92,6 +92,7 @@ def main():
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
+   
     input_args.input             = os.path.abspath(input_args.input)
     input_args.ref_fasta         = os.path.abspath(input_args.ref_fasta)
     input_args.out_dir           = os.path.abspath(input_args.out_dir)
