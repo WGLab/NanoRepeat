@@ -29,6 +29,14 @@ import os
 import sys
 
 ## objects ##
+class Read:
+    def __init__(self, readname:str, readseq:str):
+        self.read_name = readname
+        self.read_seq = readseq
+        self.core_seq = None
+        self.is_good_for_analysis = None
+        self.init_repeat_size = None
+    
 
 class RepeatRegion:
     def __init__(self, line = None):

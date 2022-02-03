@@ -104,6 +104,67 @@ def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
     
     return
 
+def find_anchor_locations_for1read(read_paf_list, repeat_region:RepeatRegion):
+
+    return
+def find_anchor_locations_from_paf(repeat_region:RepeatRegion, anchor_locations_paf_file:string):
+
+    anchor_locations_paf_f = open(anchor_locations_paf_file, 'r')
+    read_paf_list = list()
+    while 1:
+        line = anchor_locations_paf_f.readline()
+        if not line: break
+        line = line.strip()
+        if not line: continue
+
+        col_list = line.strip().split('\t')
+        paf = tk.PAF(col_list)
+
+        if len(read_paf_list) == 0 or paf.qname == read_paf_list[0].qname:
+            read_paf_list.append(paf)
+        else:
+            find_anchor_locations_for1read(read_paf_list, repeat_region)
+            read_paf_list.clear()
+            read_paf_list.append(paf)
+
+    anchor_locations_paf_f.close()
+    
+    find_anchor_locations_for1read(read_paf_list, repeat_region)
+
+    anchor_locations_paf_f.close()
+    return
+def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
+
+    template_repeat_size = 3
+    left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
+    left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
+
+    right_template_seq   = repeat_region.repeat_unit_seq * template_repeat_size + repeat_region.right_anchor_seq
+    right_template_name  = 'right_anchor_%d_%d' % (len(repeat_region.right_anchor_seq), template_repeat_size)
+
+    template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'anchors.fasta')
+    repeat_region.temp_file_list.append(template_fasta_file)
+
+    template_fasta_fp    = open(template_fasta_file, 'w')
+    template_fasta_fp.write('>%s\n' % left_template_name)
+    template_fasta_fp.write('%s\n' % left_template_seq)
+    template_fasta_fp.write('>%s\n' % right_template_name)
+    template_fasta_fp.write('%s\n' % right_template_seq)
+    template_fasta_fp.close()
+
+    anchor_locations_paf_file = os.path.join(repeat_region.temp_out_dir, 'anchor_locations.paf')
+    repeat_region.temp_file_list.append(anchor_locations_paf_file)
+
+    preset = tk.get_preset_for_minimap2('ont')
+    cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
+    
+    tk.eprint('NOTICE: step 1: find anchor location in reads')
+    tk.eprint(f'NOTICE: running command: {cmd}')
+    tk.run_system_cmd(cmd)
+    find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_file)
+    tk.eprint('NOTICE: step 1 finished')
+    return
+
 def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
 
     temp_out_dir = os.path.join(input_args.out_dir, f'{repeat_region.to_unique_id()}')
@@ -123,6 +184,7 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     
     # intitial estimation
     tk.eprint('NOTICE: intitial estimation of repeat size...')
+    find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
     first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
     
     fine_tuned_repeat_count_dict = fine_tune_read_count(input_args.minimap2, input_args.num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, temp_out_dir)
@@ -469,7 +531,7 @@ def fine_tune_read_count(minimap2, num_cpu, repeat_region, first_round_repeat_co
             tk.run_system_cmd(cmd)
         
         second_round_estimation_from_paf(chunk_paf_file, left_anchor_len, right_anchor_len, repeat_unit, fine_tuned_repeat_count_dict)
-        tk.rm(fastq_chunk.fn)
+        #tk.rm(fastq_chunk.fn)
     
     return fine_tuned_repeat_count_dict
 
