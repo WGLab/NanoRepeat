@@ -30,13 +30,25 @@ import sys
 
 ## objects ##
 class Read:
-    def __init__(self, readname:str, readseq:str):
-        self.read_name = readname
-        self.read_seq = readseq
+    def __init__(self):
+        self.read_name = None
+        self.full_read_len = None
         self.core_seq = None
-        self.is_good_for_analysis = None
         self.init_repeat_size = None
-    
+        self.left_anchor_is_good = False
+        self.right_anchor_is_good = False
+        self.both_anchors_are_good = False
+        self.core_seq_start_pos = None
+        self.core_seq_end_pos = None
+        self.left_anchor_paf = None
+        self.right_anchor_paf = None
+        self.dist_between_anchors = None
+        self.seq_between_anchors = None
+        self.strand = None
+        self.left_buffer_len = None
+        self.right_buffer_len = None
+
+ 
 
 class RepeatRegion:
     def __init__(self, line = None):
@@ -51,6 +63,7 @@ class RepeatRegion:
 
         self.region_fq_file = None
         self.region_fasta_file = None # template
+        self.core_seq_fq_file = None
 
         self.chrom = None
         self.start_pos = None
@@ -62,6 +75,9 @@ class RepeatRegion:
         self.final_out_dir = None
 
         self.temp_file_list = []
+
+        self.read_dict = dict()
+        
     
         if line != None:
             col_list = line.strip().split('\t')

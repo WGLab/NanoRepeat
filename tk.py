@@ -73,7 +73,7 @@ class PAF:
                 self.is_primary = False
 
         if self.strand != '+' and self.strand != '-':
-            eprint('ERROR! unknown strand: %s' % paf.strand)
+            eprint('ERROR! unknown strand: %s' % self.strand)
             sys.exit()
         
         if self.strand == '-':

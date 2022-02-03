@@ -41,6 +41,7 @@ from sklearn.mixture import GaussianMixture
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from typing import List
 
 def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
 
@@ -104,10 +105,75 @@ def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
     
     return
 
-def find_anchor_locations_for1read(read_paf_list, repeat_region:RepeatRegion):
+def check_anchor_mapping(one_read_anchor_paf_list: List[tk.PAF]):
+
+    if len(one_read_anchor_paf_list) == 0:
+        return False
+    
+    if len(one_read_anchor_paf_list) == 1:
+        return True
+    
+    if one_read_anchor_paf_list[0].align_len < 10: 
+        return False
+    
+    if one_read_anchor_paf_list[0].align_score > 1.5 * one_read_anchor_paf_list[1].align_score and one_read_anchor_paf_list[0].mapq > 30:
+        return True
+    else:
+        return False
+
+def find_anchor_locations_for1read(read_paf_list: List[tk.PAF], repeat_region: RepeatRegion):
+
+    left_anchor_paf_list  = []
+    right_anchor_paf_list = []
+    for paf in read_paf_list:
+        if paf.tname.startswith('left_anchor'):
+            left_anchor_paf_list.append(paf)
+        elif paf.tname.startswith('right_anchor'):
+            right_anchor_paf_list.append(paf)
+
+    left_anchor_paf_list.sort(key = lambda paf:paf.align_score, reverse=True)
+    right_anchor_paf_list.sort(key = lambda paf:paf.align_score, reverse=True)
+    read = Read()
+    read.read_name = read_paf_list[0].qname
+    read.full_read_len = read_paf_list[0].qlen
+    read.both_anchors_are_good = False
+    read.left_anchor_is_good = check_anchor_mapping(left_anchor_paf_list)
+    read.right_anchor_is_good = check_anchor_mapping(right_anchor_paf_list)
+    
+    if read.left_anchor_is_good == False: return
+    if read.right_anchor_is_good == False: return
+    
+    repeat_region_length = 0
+    read.left_anchor_paf = left_anchor_paf_list[0]
+    read.right_anchor_paf = right_anchor_paf_list[0]
+
+    # Important: if strand == '-', all positions are based on the reverse strand
+    if read.left_anchor_is_good and read.right_anchor_is_good and read.left_anchor_paf.strand == read.right_anchor_paf.strand:
+        repeat_region_length = read.right_anchor_paf.qstart - read.left_anchor_paf.qend
+
+    if repeat_region_length > -10:
+        read.both_anchors_are_good = True
+        read.dist_between_anchors = repeat_region_length
+    
+    if read.both_anchors_are_good == False: return
+    repeat_region.read_dict[read.read_name] = read
+
+    buffer_size = 50
+    if read.both_anchors_are_good:
+        read.core_seq_start_pos = read.left_anchor_paf.qend - buffer_size
+        read.core_seq_end_pos   = read.right_anchor_paf.qstart + buffer_size
+        if read.core_seq_start_pos < 0: read.core_seq_start_pos = 0
+        if read.core_seq_end_pos > read.full_read_len: read.core_seq_end_pos = read.full_read_len
+        read.left_buffer_len = read.left_anchor_paf.qend - read.core_seq_start_pos
+        read.right_buffer_len = read.core_seq_end_pos - read.right_anchor_paf.qstart
+        if read.left_anchor_paf.strand == '+':
+            read.strand = '+'
+        else:
+            read.strand = '-'
 
     return
-def find_anchor_locations_from_paf(repeat_region:RepeatRegion, anchor_locations_paf_file:string):
+
+def find_anchor_locations_from_paf(repeat_region: RepeatRegion, anchor_locations_paf_file: string):
 
     anchor_locations_paf_f = open(anchor_locations_paf_file, 'r')
     read_paf_list = list()
@@ -135,12 +201,11 @@ def find_anchor_locations_from_paf(repeat_region:RepeatRegion, anchor_locations_
     return
 def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
 
-    template_repeat_size = 3
-    left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
-    left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
+    left_template_seq    = repeat_region.left_anchor_seq
+    left_template_name   = 'left_anchor'
 
-    right_template_seq   = repeat_region.repeat_unit_seq * template_repeat_size + repeat_region.right_anchor_seq
-    right_template_name  = 'right_anchor_%d_%d' % (len(repeat_region.right_anchor_seq), template_repeat_size)
+    right_template_seq   = repeat_region.right_anchor_seq
+    right_template_name  = 'right_anchor'
 
     template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'anchors.fasta')
     repeat_region.temp_file_list.append(template_fasta_file)
@@ -165,6 +230,39 @@ def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, 
     tk.eprint('NOTICE: step 1 finished')
     return
 
+def make_core_seq_fastq(repeat_region: RepeatRegion):
+    repeat_region.core_seq_fq_file = os.path.join(repeat_region.temp_out_dir, 'core_sequences.fastq')
+    repeat_region.temp_file_list.append(repeat_region.core_seq_fq_file)
+    region_fq_f = open(repeat_region.region_fq_file, 'r')
+    core_seq_fq_f = open(repeat_region.core_seq_fq_file, 'w')
+    while 1:
+        line1 = region_fq_f.readline()
+        line2 = region_fq_f.readline()
+        line3 = region_fq_f.readline()
+        line4 = region_fq_f.readline()
+        if not line1: break
+        if not line2: break
+        if not line3: break
+        if not line4: break
+
+        read_name = line1.strip()[1:]
+        if read_name not in repeat_region.read_dict: continue
+        read_sequence = line2.strip()            
+        if repeat_region.read_dict[read_name].strand == '-':
+            read_sequence = tk.rev_comp(read_sequence)
+        core_sequence = read_sequence[repeat_region.read_dict[read_name].core_seq_start_pos:repeat_region.read_dict[read_name].core_seq_end_pos]
+
+        base_qual = '0' * len(core_sequence)
+        core_seq_fq_f.write(line1)
+        core_seq_fq_f.write(core_sequence + '\n')
+        core_seq_fq_f.write(line3)
+        core_seq_fq_f.write(base_qual + '\n')
+
+    region_fq_f.close()
+    core_seq_fq_f.close()
+
+    return
+
 def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
 
     temp_out_dir = os.path.join(input_args.out_dir, f'{repeat_region.to_unique_id()}')
@@ -185,6 +283,9 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     # intitial estimation
     tk.eprint('NOTICE: intitial estimation of repeat size...')
     find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
+
+    # make core sequence fastq
+    make_core_seq_fastq(repeat_region)
     first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
     
     fine_tuned_repeat_count_dict = fine_tune_read_count(input_args.minimap2, input_args.num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, temp_out_dir)
@@ -469,9 +570,9 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
     
     return
 
-def fine_tune_read_count(minimap2, num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, out_dir):
+def fine_tune_read_count(minimap2, num_cpu, repeat_region:RepeatRegion, first_round_repeat_count_dict, potential_repeat_region_dict, out_dir):
     
-    in_fastq_file = repeat_region.region_fq_file
+    in_fastq_file = repeat_region.core_seq_fq_file
     repeat_unit = repeat_region.repeat_unit_seq
     max_repeat_size = repeat_region.max_repeat_size
     platform = 'ont'
@@ -649,7 +750,7 @@ def get_max_read_length_from_fastq(fq_file):
 
 def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     
-    template_repeat_size = 5
+    template_repeat_size = int(get_max_read_length_from_fastq(repeat_region.core_seq_fq_file) / len(repeat_region.repeat_unit_seq)) + 1
     
     left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
     left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
@@ -671,7 +772,7 @@ def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int)
     first_round_paf_file = os.path.join(repeat_region.temp_out_dir, 'first_round.paf')
     repeat_region.temp_file_list.append(first_round_paf_file)
     preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {first_round_paf_file} 2> /dev/null'
+    cmd = f'{minimap2} -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {first_round_paf_file} 2> /dev/null'
 
     tk.eprint('NOTICE: first round alignment')
     tk.run_system_cmd(cmd)

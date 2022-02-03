@@ -61,16 +61,16 @@ def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t1) python {program} -i input.bam   -t bam   -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
-    examples += f'\t2) python {program} -i input.fastq -t fastq -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
-    examples += f'\t3) python {program} -i input.fasta -t fasta -f hg38.fasta -r hg38.repeats.bed -o ./output\n'
+    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
+    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
+    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
     # required
     parser.add_argument('-i', '--input', required = True, metavar = 'input_file', type = str, help = '(required) path to input file (supported format: sorted_bam, fastq or fasta)')
     parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
-    parser.add_argument('-f', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
+    parser.add_argument('-r', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
     parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
     parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
     
