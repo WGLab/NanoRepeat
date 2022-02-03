@@ -77,6 +77,7 @@ class RepeatRegion:
         self.temp_file_list = []
 
         self.read_dict = dict()
+        self.buffer_len = None
         
     
         if line != None:

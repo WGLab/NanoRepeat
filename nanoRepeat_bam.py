@@ -156,12 +156,13 @@ def find_anchor_locations_for1read(read_paf_list: List[tk.PAF], repeat_region: R
         read.dist_between_anchors = repeat_region_length
     
     if read.both_anchors_are_good == False: return
+    
     repeat_region.read_dict[read.read_name] = read
 
-    buffer_size = 50
+    repeat_region.buffer_len = 50
     if read.both_anchors_are_good:
-        read.core_seq_start_pos = read.left_anchor_paf.qend - buffer_size
-        read.core_seq_end_pos   = read.right_anchor_paf.qstart + buffer_size
+        read.core_seq_start_pos = read.left_anchor_paf.qend - repeat_region.buffer_len
+        read.core_seq_end_pos   = read.right_anchor_paf.qstart + repeat_region.buffer_len
         if read.core_seq_start_pos < 0: read.core_seq_start_pos = 0
         if read.core_seq_end_pos > read.full_read_len: read.core_seq_end_pos = read.full_read_len
         read.left_buffer_len = read.left_anchor_paf.qend - read.core_seq_start_pos
@@ -751,7 +752,18 @@ def get_max_read_length_from_fastq(fq_file):
 def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     
     template_repeat_size = int(get_max_read_length_from_fastq(repeat_region.core_seq_fq_file) / len(repeat_region.repeat_unit_seq)) + 1
-    
+
+    ## reduce anchor length
+    fast_estimation = True
+    if fast_estimation:
+        if repeat_region.left_anchor_len > repeat_region.buffer_len:
+            repeat_region.left_anchor_seq = repeat_region.left_anchor_seq[-repeat_region.buffer_len:]
+            repeat_region.left_anchor_len = len(repeat_region.left_anchor_seq)
+
+        if repeat_region.right_anchor_len > repeat_region.buffer_len:
+            repeat_region.right_anchor_seq = repeat_region.left_anchor_seq[0:repeat_region.buffer_len]
+            repeat_region.right_anchor_len = len(repeat_region.right_anchor_seq)
+
     left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
     left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
 
