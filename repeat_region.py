@@ -40,6 +40,8 @@ class Read:
         self.both_anchors_are_good = False
         self.core_seq_start_pos = None
         self.core_seq_end_pos = None
+        self.mid_seq_start_pos = None
+        self.mid_seq_end_pos = None
         self.left_anchor_paf = None
         self.right_anchor_paf = None
         self.dist_between_anchors = None
@@ -47,8 +49,9 @@ class Read:
         self.strand = None
         self.left_buffer_len = None
         self.right_buffer_len = None
-
- 
+        self.round1_repeat_size = None
+        self.round2_repeat_size = None
+        self.round3_repeat_size = None
 
 class RepeatRegion:
     def __init__(self, line = None):
@@ -64,7 +67,7 @@ class RepeatRegion:
         self.region_fq_file = None
         self.region_fasta_file = None # template
         self.core_seq_fq_file = None
-
+        self.mid_seq_fq_file = None
         self.chrom = None
         self.start_pos = None
         self.end_pos = None
@@ -78,6 +81,7 @@ class RepeatRegion:
 
         self.read_dict = dict()
         self.buffer_len = None
+        self.brute_force_repeat_count_dict = dict()
         
     
         if line != None:
@@ -99,6 +103,7 @@ class RepeatRegion:
 
     def to_unique_id(self):
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{self.repeat_unit_seq}'
+
 
 def read_repeat_region_file(repeat_region_file):
     repeat_region_list = []

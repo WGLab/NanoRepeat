@@ -29,12 +29,12 @@ SOFTWARE.
 import os
 import string
 import sys
-from timeit import repeat
-from tokenize import String
-from turtle import end_poly
+import shutil
 import numpy as np
 import tk
 from repeat_region import *
+from paf import *
+
 
 from numpy.f2py.auxfuncs import containsmodule
 from sklearn.mixture import GaussianMixture
@@ -105,7 +105,7 @@ def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
     
     return
 
-def check_anchor_mapping(one_read_anchor_paf_list: List[tk.PAF]):
+def check_anchor_mapping(one_read_anchor_paf_list: List[PAF]):
 
     if len(one_read_anchor_paf_list) == 0:
         return False
@@ -121,7 +121,7 @@ def check_anchor_mapping(one_read_anchor_paf_list: List[tk.PAF]):
     else:
         return False
 
-def find_anchor_locations_for1read(read_paf_list: List[tk.PAF], repeat_region: RepeatRegion):
+def find_anchor_locations_for1read(read_paf_list: List[PAF], repeat_region: RepeatRegion):
 
     left_anchor_paf_list  = []
     right_anchor_paf_list = []
@@ -159,10 +159,12 @@ def find_anchor_locations_for1read(read_paf_list: List[tk.PAF], repeat_region: R
 
     repeat_region.read_dict[read.read_name] = read
 
-    repeat_region.buffer_len = 50
+    repeat_region.buffer_len = 100
     if read.both_anchors_are_good:
         read.core_seq_start_pos = read.left_anchor_paf.qend - repeat_region.buffer_len
         read.core_seq_end_pos   = read.right_anchor_paf.qstart + repeat_region.buffer_len
+        read.mid_seq_start_pos  = read.left_anchor_paf.qend
+        read.mid_seq_end_pos    = read.right_anchor_paf.qstart
         if read.core_seq_start_pos < 0: read.core_seq_start_pos = 0
         if read.core_seq_end_pos > read.full_read_len: read.core_seq_end_pos = read.full_read_len
         read.left_buffer_len = read.left_anchor_paf.qend - read.core_seq_start_pos
@@ -185,7 +187,7 @@ def find_anchor_locations_from_paf(repeat_region: RepeatRegion, anchor_locations
         if not line: continue
 
         col_list = line.strip().split('\t')
-        paf = tk.PAF(col_list)
+        paf = PAF(col_list)
 
         if len(read_paf_list) == 0 or paf.qname == read_paf_list[0].qname:
             read_paf_list.append(paf)
@@ -198,8 +200,8 @@ def find_anchor_locations_from_paf(repeat_region: RepeatRegion, anchor_locations
     
     find_anchor_locations_for1read(read_paf_list, repeat_region)
 
-    anchor_locations_paf_f.close()
     return
+
 def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
 
     left_template_seq    = repeat_region.left_anchor_seq
@@ -223,19 +225,22 @@ def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, 
 
     preset = tk.get_preset_for_minimap2('ont')
     cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
-    
-    tk.eprint('NOTICE: step 1: find anchor location in reads')
     tk.eprint(f'NOTICE: running command: {cmd}')
     tk.run_system_cmd(cmd)
     find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_file)
-    tk.eprint('NOTICE: step 1 finished')
+    
     return
 
 def make_core_seq_fastq(repeat_region: RepeatRegion):
     repeat_region.core_seq_fq_file = os.path.join(repeat_region.temp_out_dir, 'core_sequences.fastq')
     repeat_region.temp_file_list.append(repeat_region.core_seq_fq_file)
-    region_fq_f = open(repeat_region.region_fq_file, 'r')
+
+    repeat_region.mid_seq_fq_file = os.path.join(repeat_region.temp_out_dir, 'middle_sequences.fastq')
+    repeat_region.temp_file_list.append(repeat_region.mid_seq_fq_file)
+
+    region_fq_f   = open(repeat_region.region_fq_file, 'r')
     core_seq_fq_f = open(repeat_region.core_seq_fq_file, 'w')
+    mid_seq_fq_f  = open(repeat_region.mid_seq_fq_file, 'w')
     while 1:
         line1 = region_fq_f.readline()
         line2 = region_fq_f.readline()
@@ -252,16 +257,90 @@ def make_core_seq_fastq(repeat_region: RepeatRegion):
         if repeat_region.read_dict[read_name].strand == '-':
             read_sequence = tk.rev_comp(read_sequence)
         core_sequence = read_sequence[repeat_region.read_dict[read_name].core_seq_start_pos:repeat_region.read_dict[read_name].core_seq_end_pos]
+        mid_sequence = read_sequence[repeat_region.read_dict[read_name].mid_seq_start_pos:repeat_region.read_dict[read_name].mid_seq_end_pos]
 
-        base_qual = '0' * len(core_sequence)
         core_seq_fq_f.write(line1)
         core_seq_fq_f.write(core_sequence + '\n')
         core_seq_fq_f.write(line3)
-        core_seq_fq_f.write(base_qual + '\n')
+        core_seq_fq_f.write('0' * len(core_sequence) + '\n')
+
+
+        mid_seq_fq_f.write(line1)
+        mid_seq_fq_f.write(mid_sequence + '\n')
+        mid_seq_fq_f.write(line3)
+        mid_seq_fq_f.write('0' * len(mid_sequence) + '\n')
 
     region_fq_f.close()
     core_seq_fq_f.close()
+    mid_seq_fq_f.close()
+    return
 
+def output_results(repeat_region:RepeatRegion):
+
+    read_count_file = os.path.join(repeat_region.final_out_dir, f'{repeat_region.to_unique_id()}.repeat_size.txt')
+    read_count_f = open(read_count_file, 'w')
+
+    repeat_size_list = []
+    for read_name in repeat_region.read_dict:
+        repeat_size = repeat_region.read_dict[read_name].round3_repeat_size
+        if repeat_size != None:
+            repeat_size_list.append(repeat_size)
+
+    if len(repeat_size_list) > 0:
+        median_repeat_size = np.median(repeat_size_list)
+    else:
+        median_repeat_size = 'N.A.'
+    
+    num_reads = len(repeat_size_list)
+    read_count_f.write(f'#predicted_repeat_size={median_repeat_size}\tnum_reads={num_reads}\n')
+    for read_name in repeat_region.read_dict:
+        repeat_size = repeat_region.read_dict[read_name].round3_repeat_size
+        if repeat_size != None:
+            read_count_f.write(f'{read_name}\t{repeat_size}\n')
+    read_count_f.close()
+
+def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, num_cpu: int):
+
+    if len(repeat_region.read_dict) == 0: return
+
+    round1_repeat_size_list = []
+    for read_name in repeat_region.read_dict:
+        read = repeat_region.read_dict[read_name]
+        read.round1_repeat_size = float(read.dist_between_anchors)/len(repeat_region.repeat_unit_seq)
+        round1_repeat_size_list.append(read.round1_repeat_size)
+    
+    template_repeat_size = int(max(round1_repeat_size_list) * 1.5) + 1
+
+    if template_repeat_size < max(round1_repeat_size_list) + 10:
+        template_repeat_size = max(round1_repeat_size_list) + 10
+    
+    round1_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'round1_ref.fasta')
+    repeat_region.temp_file_list.append(round1_fasta_file)
+    
+    round1_fasta_f = open(round1_fasta_file, 'w')
+    round1_fasta_f.write(f'>{template_repeat_size}\n')
+    round1_fasta_f.write(f'{repeat_region.left_anchor_seq}{repeat_region.repeat_unit_seq * template_repeat_size}\n')
+    round1_fasta_f.close()
+
+    round1_paf_file = os.path.join(repeat_region.temp_out_dir, 'round1.paf')
+    repeat_region.temp_file_list.append(round1_paf_file)
+    preset = tk.get_preset_for_minimap2('ont')
+    cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
+    
+    tk.eprint(f'NOTICE: running command: {cmd}')
+    tk.run_system_cmd(cmd)
+    round1_paf_f = open(round1_paf_file, 'r')
+    lines = list(round1_paf_f)
+    round1_paf_f.close()
+
+    for line in lines:
+        col_list = line.strip().split('\t')
+        paf = PAF(col_list)
+        if paf.tstart <= len(repeat_region.left_anchor_seq) and paf.tend >= len(repeat_region.left_anchor_seq):
+            read_name = paf.qname
+            round2_repeat_size = float(paf.tend - len(repeat_region.left_anchor_seq))/len(repeat_region.repeat_unit_seq)
+            repeat_region.read_dict[read_name].round2_repeat_size = round2_repeat_size
+    
     return
 
 def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
@@ -281,24 +360,27 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
     
-    # intitial estimation
-    tk.eprint('NOTICE: intitial estimation of repeat size...')
+    tk.eprint('NOTICE: step 1: finding anchor location in reads')
     find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
+    tk.eprint('NOTICE: step 1 finished')
 
     # make core sequence fastq
     make_core_seq_fastq(repeat_region)
-    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = initial_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
+
+    tk.eprint('NOTICE: step 2: round 1 and round 2 estimation')
+    round1_and_round2_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
+    tk.eprint('NOTICE: step 2 finished')
+
+    tk.eprint('NOTICE: step 3: round 3 estimation')
+    round3_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
+    tk.eprint('NOTICE: step 3 finished')
     
-    fine_tuned_repeat_count_dict = fine_tune_read_count(input_args.minimap2, input_args.num_cpu, repeat_region, first_round_repeat_count_dict, potential_repeat_region_dict, temp_out_dir)
-
-    for readname in bad_reads_set:
-        fine_tuned_repeat_count_dict.pop(readname, None)
-
-    tk.eprint('NOTICE: assigned repeat size to %d reads.' % len(fine_tuned_repeat_count_dict))
- 
-    split_allele_using_gmm(input_args.ploidy, fine_tuned_repeat_count_dict, repeat_region.region_fq_file, input_args.out_dir)
+    output_results(repeat_region)
+    #split_allele_using_gmm(input_args.ploidy, fine_tuned_repeat_count_dict, repeat_region.region_fq_file, input_args.out_dir)
     
     tk.eprint('NOTICE: program finished. output files are here: %s' % input_args.out_dir)
+
+    shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
@@ -571,171 +653,6 @@ def plot_repeat_counts(each_allele_repeat_count_2d_list, predicted_repeat_count_
     
     return
 
-def fine_tune_read_count(minimap2, num_cpu, repeat_region:RepeatRegion, first_round_repeat_count_dict, potential_repeat_region_dict, out_dir):
-    
-    in_fastq_file = repeat_region.core_seq_fq_file
-    repeat_unit = repeat_region.repeat_unit_seq
-    max_repeat_size = repeat_region.max_repeat_size
-    platform = 'ont'
-
-    first_round_max_repeat_size = 0
-    for readname, value in first_round_repeat_count_dict.items():
-        min_repeat_size, max_repeat_size = value
-        if max_repeat_size > first_round_max_repeat_size:
-            first_round_max_repeat_size = max_repeat_size
-    
-    tk.eprint(f'NOTICE: max repeat size from first round estimation is {first_round_max_repeat_size}')
-
-    tk.eprint('NOTICE: fine-tuning repeat size')
-    fine_tuned_repeat_count_dict = dict()
-
-    left_anchor_seq = repeat_region.left_anchor_seq
-    right_anchor_seq = repeat_region.right_anchor_seq
-    
-    left_anchor_len = len(left_anchor_seq)
-    right_anchor_len = len(right_anchor_seq)
-    repeat_unit_size = len(repeat_unit)
-    fastq_chunk_list = split_input_fastq_file_by_repeat_size(first_round_repeat_count_dict, potential_repeat_region_dict, in_fastq_file, first_round_max_repeat_size, out_dir)
-    
-    preset = tk.get_preset_for_minimap2(platform)
-
-    tk.eprint('NOTICE: second round alignment')
-    chunk_ref_fasta_file_list = list()
-
-    for repeat_size in range(0, first_round_max_repeat_size+10):
-        chunk_ref_fasta_file = os.path.join(out_dir, f'{repeat_size}.ref.fasta')
-        chunk_ref_fasta_fp = open(chunk_ref_fasta_file, 'w')
-        template_seq = left_anchor_seq + repeat_unit * repeat_size + right_anchor_seq
-        chunk_ref_fasta_fp.write(f'>{repeat_size}\n')
-        chunk_ref_fasta_fp.write(template_seq + '\n')
-        chunk_ref_fasta_fp.close()
-        chunk_ref_fasta_file_list.append(chunk_ref_fasta_file)
-    
-    for fastq_chunk in fastq_chunk_list:
-        
-        max_size = fastq_chunk.max_size
-        min_size = fastq_chunk.min_size
-    
-        tk.eprint('NOTICE: current chunk is: %d-%d' % (min_size, max_size))
-        chunk_paf_file = os.path.join(out_dir, f'{min_size}-{max_size}.paf')
-    
-        chunk_paf_fp = open(chunk_paf_file, 'w')
-        chunk_paf_fp.close()
-        
-        for repeat_size in range(min_size, max_size):
-            if repeat_size >= len(chunk_ref_fasta_file_list): continue
-            chunk_ref_fasta_file = chunk_ref_fasta_file_list[repeat_size]
-            if repeat_size * repeat_unit_size < 100:
-                additional_para = tk.minimap2_mid_para
-            else:
-                additional_para = ''
-            cmd = f'{minimap2} {additional_para} -A 2 -B 5 -N 1 -c --eqx --cs -t {num_cpu} -x {preset} {chunk_ref_fasta_file} {fastq_chunk.fn} >> {chunk_paf_file} 2> /dev/null'
-            tk.run_system_cmd(cmd)
-        
-        second_round_estimation_from_paf(chunk_paf_file, left_anchor_len, right_anchor_len, repeat_unit, fine_tuned_repeat_count_dict)
-        #tk.rm(fastq_chunk.fn)
-    
-    return fine_tuned_repeat_count_dict
-
-def second_round_estimation_from_paf(second_round_paf_file, left_anchor_len, right_anchor_len, repeat_unit, second_round_repeat_count_dict):
-
-    repeat_unit_size = len(repeat_unit)
-    second_round_paf_fp = open(second_round_paf_file, 'r')
-    read_align_score_dict = dict()
-    while 1:
-        line = second_round_paf_fp.readline()
-        if not line: break
-        line = line.strip()
-        if not line: continue
-
-        col_list = line.strip().split('\t')
-        paf = tk.PAF(col_list)
-        repeat_size = int(paf.tname)
-        a = left_anchor_len - 7
-        if a < 0: a = 0
-        b = left_anchor_len + repeat_unit_size * repeat_size + 7
-        if b > paf.tlen: b = paf.tlen
-        repeat_region_align_score = tk.target_region_alignment_stats_from_cigar(paf.cigar, paf.tstart, paf.tend, a, b).score
-    
-        tup = (repeat_size, paf.qlen, repeat_region_align_score, paf.align_score)
-        if paf.qname not in read_align_score_dict:
-            read_align_score_dict[paf.qname] = list()
-        read_align_score_dict[paf.qname].append(tup)    
-
-    second_round_paf_fp.close()
-
-    for readname in read_align_score_dict:
-        tup_list = read_align_score_dict[readname]
-        tup_list.sort(key = lambda x:x[2], reverse = True)
-        max_score = tup_list[0][2]
-        max_score_repeat_size_list = list()
-        for tup in tup_list:
-            if tup[2] == max_score:
-                max_score_repeat_size_list.append(tup[0])
-            else:
-                break
-        round2_repeat_size = np.mean(max_score_repeat_size_list)
-        second_round_repeat_count_dict[readname] = round2_repeat_size
-    
-    return
-
-def split_input_fastq_file_by_repeat_size(first_round_max_repeat_count_dict, potential_repeat_region_dict, in_fastq_file, max_repeat_size, out_dir):
-
-    tk.eprint('NOTICE: splitting fastq files')
-    bin_size = int(max_repeat_size / 200) + 1
-    fastq_chunk_list = list()
-    repeat_size2chunk_table = [-1] * (max_repeat_size+bin_size+1)
-    for min_size in range(0, max_repeat_size+1, bin_size):
-        max_size = min_size + bin_size
-        fn = os.path.join(out_dir, f'{min_size}-{max_size}.fastq')
-        fp = open(fn, 'w')
-        fastq_chunk = FastqChunk(min_size, max_size, fn, fp)
-        fastq_chunk_list.append(fastq_chunk)
-
-        for i in range(min_size, max_size):
-            repeat_size2chunk_table[i] = len(fastq_chunk_list) - 1
-
-    in_fastq_fp = tk.gzopen(in_fastq_file, 'r')
-    while 1:
-        line1 = in_fastq_fp.readline()
-        line2 = in_fastq_fp.readline()
-        line3 = in_fastq_fp.readline()
-        line4 = in_fastq_fp.readline()
-        if not line1: break
-        if not line2: break
-        if not line3: break
-        if not line4: break
-
-        if line1[0] != '@' or len(line2)!= len(line4):
-            tk.eprint(f'ERROR! found corrupted reads in input fastq file: {in_fastq_file}')
-            sys.exit()
-        
-        readname = line1[1:].split()[0]
-        if readname not in first_round_max_repeat_count_dict: continue
-        min_size, max_size = first_round_max_repeat_count_dict[readname]
-        chunk_id1 = repeat_size2chunk_table[min_size]
-        chunk_id2 = repeat_size2chunk_table[max_size]
-
-        if chunk_id1 < 0: chunk_id1 = 0
-        if chunk_id2 < 0: chunk_id2 = len(fastq_chunk_list)-1
-    
-        if readname not in potential_repeat_region_dict:
-            for x in range(chunk_id1, chunk_id2+1):
-                fastq_chunk_list[x].fp.write(line1 + line2 + line3 + line4)
-        else:
-            start, end = potential_repeat_region_dict[readname]
-            seq  = line2[start:end] + '\n'
-            qual = line4[start:end] + '\n'
-            out = f'@{readname} {start}-{end}\n' + seq + line3 + qual
-            for x in range(chunk_id1, chunk_id2+1):
-                fastq_chunk_list[x].fp.write(out)
-     
-    in_fastq_fp.close()
-    for fastq_chunk in fastq_chunk_list:
-        fastq_chunk.fp.close()
-
-    return fastq_chunk_list
-
 def get_max_read_length_from_fastq(fq_file):
 
     max_read_length = 0
@@ -749,162 +666,79 @@ def get_max_read_length_from_fastq(fq_file):
 
     return max_read_length
 
-def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
-    
-    template_repeat_size = int(get_max_read_length_from_fastq(repeat_region.core_seq_fq_file) / len(repeat_region.repeat_unit_seq)) + 1
+def round3_estimation_for1read(repeat_region: RepeatRegion, read_paf_list):
 
-    ## reduce anchor length
-    fast_estimation = False
-    if fast_estimation:
-        if repeat_region.left_anchor_len > repeat_region.buffer_len:
-            repeat_region.left_anchor_seq = repeat_region.left_anchor_seq[-repeat_region.buffer_len:]
-            repeat_region.left_anchor_len = len(repeat_region.left_anchor_seq)
+    if len(read_paf_list) == 0: return
 
-        if repeat_region.right_anchor_len > repeat_region.buffer_len:
-            repeat_region.right_anchor_seq = repeat_region.left_anchor_seq[0:repeat_region.buffer_len]
-            repeat_region.right_anchor_len = len(repeat_region.right_anchor_seq)
+    read_paf_list.sort(key = lambda paf:paf.align_score, reverse = True)
+    best_paf = read_paf_list[0]
+    read_name = best_paf.qname
+    if best_paf.tstart < repeat_region.left_anchor_len and best_paf.tlen - best_paf.tend < repeat_region.right_anchor_len:
+        repeat_region.read_dict[read_name].round3_repeat_size = int(best_paf.tname)
+    else:
+        repeat_region.read_dict[read_name].round3_repeat_size = repeat_region.read_dict[read_name].round2_repeat_size
+    return
+                
+def round3_estimation_from_paf(repeat_region: RepeatRegion, round3_paf_file):
 
-    left_template_seq    = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * template_repeat_size
-    left_template_name   = 'left_anchor_%d_%d' % (len(repeat_region.left_anchor_seq), template_repeat_size)
+    round3_paf_f = open(round3_paf_file, 'r')
+    lines = list(round3_paf_f)
+    round3_paf_f.close()
 
-    right_template_seq   = repeat_region.repeat_unit_seq * template_repeat_size + repeat_region.right_anchor_seq
-    right_template_seq   = tk.rev_comp(right_template_seq)
-    right_template_name  = 'right_anchor_%d_%d_revc' % (len(repeat_region.right_anchor_seq), template_repeat_size)
-
-    template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'templates.fasta')
-    repeat_region.temp_file_list.append(template_fasta_file)
-
-    template_fasta_fp    = open(template_fasta_file, 'w')
-    template_fasta_fp.write('>%s\n' % left_template_name)
-    template_fasta_fp.write('%s\n' % left_template_seq)
-    template_fasta_fp.write('>%s\n' % right_template_name)
-    template_fasta_fp.write('%s\n' % right_template_seq)
-    template_fasta_fp.close()
-
-    first_round_paf_file = os.path.join(repeat_region.temp_out_dir, 'first_round.paf')
-    repeat_region.temp_file_list.append(first_round_paf_file)
-    preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {first_round_paf_file} 2> /dev/null'
-
-    tk.eprint('NOTICE: first round alignment')
-    tk.run_system_cmd(cmd)
-    tk.eprint('NOTICE: first round alignment finished')
-
-    first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set = first_round_estimation_from_paf(first_round_paf_file, len(repeat_region.left_anchor_seq), len(repeat_region.right_anchor_seq), repeat_region.repeat_unit_seq)
-    
-    return first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set
-
-def first_round_estimation_from_paf(first_round_paf_file, left_anchor_len, right_anchor_len, repeat_unit):
-
-    first_round_repeat_count_dict = dict()
-    potential_repeat_region_dict = dict()
-    bad_reads_set = set()
-    first_round_paf_fp = open(first_round_paf_file, 'r')
-
-    read_paf_list = list()
-    while 1:
-        line = first_round_paf_fp.readline()
-        if not line: break
-        line = line.strip()
-        if not line: continue
-
+    read_paf_list = []
+    for line in lines:
         col_list = line.strip().split('\t')
-        paf = tk.PAF(col_list)
-
+        paf = PAF(col_list)
+        if paf.qname not in repeat_region.read_dict: continue
+        if repeat_region.read_dict[paf.qname].round2_repeat_size == None: continue
         if len(read_paf_list) == 0 or paf.qname == read_paf_list[0].qname:
             read_paf_list.append(paf)
         else:
-            first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor_len, repeat_unit, first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set)
+            round3_estimation_for1read(repeat_region, read_paf_list)
             read_paf_list.clear()
             read_paf_list.append(paf)
 
-    first_round_paf_fp.close()
+    round3_estimation_for1read(repeat_region, read_paf_list)
     
-    first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor_len, repeat_unit, first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set)
-
-    return first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set
-
-def first_round_estimation_for1read(read_paf_list, left_anchor_len, right_anchor_len, repeat_unit, first_round_repeat_count_dict, potential_repeat_region_dict, bad_reads_set):
-
-    repeat_unit_size = len(repeat_unit)
-    left_boundary_pos  = left_anchor_len
-    right_boundary_pos = right_anchor_len
-    
-    left_anchor_paf_list  = list()
-    right_anchor_paf_list = list()
-    
-    for paf in read_paf_list:
-        if paf.mapq < 30: continue
-        if paf.is_primary == False: continue 
-        if paf.tname[0:5] == 'left_':
-            if paf.tstart <= left_boundary_pos and paf.tend >= left_boundary_pos:
-                left_anchor_paf_list.append(paf)
-        elif paf.tname[0:5] == 'right':
-            if paf.tstart <= right_boundary_pos and paf.tend >= right_boundary_pos:
-                right_anchor_paf_list.append(paf)
-        else:
-            tk.eprint('ERROR! unknown template: %s' % (paf.tname))
-            sys.exit()
-    
-    if len(left_anchor_paf_list) != 1 and len(right_anchor_paf_list) != 1 : return
-    
-    outer_end1 = -1
-    outer_end2 = -1
-    if len(left_anchor_paf_list) == 1:
-        # left anchor is good
-        left_paf  = left_anchor_paf_list[0]
-        left_paf_num_repeats = int((left_paf.tend - left_boundary_pos)/repeat_unit_size) + 1
-        repeat_size1 = tk.calculate_repeat_size_from_exact_match(left_paf.cigar, left_paf.tstart, left_boundary_pos, repeat_unit_size)
-        outer_end1 = left_paf.qend
-        if left_paf.strand == '-': 
-            outer_end1 = left_paf.qlen - outer_end1
-        
-    if len(right_anchor_paf_list) == 1:
-        # right anchor is good
-        right_paf = right_anchor_paf_list[0]
-        right_paf_num_repeats = int((right_paf.tend - right_boundary_pos)/repeat_unit_size) + 1
-        repeat_size2 = tk.calculate_repeat_size_from_exact_match(right_paf.cigar, right_paf.tstart, right_boundary_pos, repeat_unit_size)
-        outer_end2 = right_paf.qend
-        if right_paf.strand == '-': 
-            outer_end2 = right_paf.qlen - outer_end2
-
-    
-    if len(left_anchor_paf_list) != 1:
-        # left anchor is bad
-        first_round_repeat_count_dict[right_paf.qname] = (repeat_size2, right_paf_num_repeats)
-        return
-    
-    if len(right_anchor_paf_list) != 1:
-        # rigth anchor is bad
-        first_round_repeat_count_dict[left_paf.qname] = (repeat_size1, left_paf_num_repeats)
-        return
-
-    if left_paf.strand == right_paf.strand: return
-
-    if (left_paf.strand == '+' and outer_end1 < outer_end2) or (left_paf.strand == '-' and outer_end1 > outer_end2):
-        bad_reads_set.add(left_paf.qname)
-        return
-    
-    max_num_repeat_units = max(left_paf_num_repeats, right_paf_num_repeats)+5
-    min_num_repeat_units = min(repeat_size1, repeat_size2)
-    if left_paf.strand == '-': 
-        outer_end1, outer_end2 = tk.switch_two_numbers(outer_end1, outer_end2)
-
-    flank_len = 100
-    a = outer_end2 - flank_len
-    if a < 0: a = 0
-    b = outer_end1 + flank_len
-    if b > left_paf.qlen: b = left_paf.qlen
-    potential_repeat_region_dict[left_paf.qname] = (a, b)
-
-    if left_paf.qname not in first_round_repeat_count_dict:
-        first_round_repeat_count_dict[left_paf.qname] = (min_num_repeat_units, max_num_repeat_units)
-    else:
-        tk.eprint(f'ERROR! read name already exists in first_round_repeat_count_dict: {left_paf.qname}')
-        sys.exit()
-
     return 
 
+
+def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
+    
+    estimated_repeat_size_list = []
+    for read_name in repeat_region.read_dict:
+        read = repeat_region.read_dict[read_name]
+        if read.round2_repeat_size != None:
+            estimated_repeat_size_list.append(read.round2_repeat_size)
+    if len(estimated_repeat_size_list) == 0: return
+    max_template_repeat_size = int(max(estimated_repeat_size_list) * 1.5) + 1
+    min_template_repeat_size = int(min(estimated_repeat_size_list) / 2)
+
+    if min_template_repeat_size > min(estimated_repeat_size_list) - 10:
+        min_template_repeat_size = int(min(estimated_repeat_size_list) - 10)
+    if max_template_repeat_size < max(estimated_repeat_size_list) + 10:
+        max_template_repeat_size = int(max(estimated_repeat_size_list) + 10) + 1
+    
+    template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'round3_ref.fasta')
+    repeat_region.temp_file_list.append(template_fasta_file)
+    template_fasta_fp    = open(template_fasta_file, 'w')
+    for repeat_size in range(min_template_repeat_size, max_template_repeat_size+1):
+        template_seq = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * repeat_size + repeat_region.right_anchor_seq
+        template_fasta_fp.write('>%s\n' % repeat_size)
+        template_fasta_fp.write('%s\n' % template_seq)
+
+    template_fasta_fp.close()
+
+    round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
+    repeat_region.temp_file_list.append(round3_paf_file)
+
+    preset = tk.get_preset_for_minimap2('ont')
+    cmd = f'{minimap2} -N 1 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
+    tk.run_system_cmd(cmd)
+
+    round3_estimation_from_paf(repeat_region, round3_paf_file)
+    
+    return
 
 class Metainfo:
     def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
@@ -932,15 +766,6 @@ class Metainfo:
     def output(self):
         return 'allele_id=%d\tnum_reads=%d\tpredicted_repeat_size=%d\tmin_repeat_size=%d\tmax_repeat_size=%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
 
-
-class FastqChunk:
-    def __init__(self, min_size, max_size, fn, fp):
-        self.min_size = int(min_size)
-        self.max_size = int(max_size)
-        self.fn = fn
-        self.fp = fp
-
-
 def nanoRepeat_bam (input_args, in_bam_file):
     
     tk.eprint(f'NOTICE: reading repeat region file: {input_args.repeat_region_bed}')
@@ -951,9 +776,7 @@ def nanoRepeat_bam (input_args, in_bam_file):
     
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
-        try:
-            quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
-        except:
-            tk.eprint(f'ERROR: failed_one_region: {repeat_region.to_unique_id()}')
+        quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
+        #tk.eprint(f'ERROR: failed_one_region: {repeat_region.to_unique_id()}')
     return
 
