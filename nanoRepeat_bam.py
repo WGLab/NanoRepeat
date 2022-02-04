@@ -156,7 +156,7 @@ def find_anchor_locations_for1read(read_paf_list: List[tk.PAF], repeat_region: R
         read.dist_between_anchors = repeat_region_length
     
     if read.both_anchors_are_good == False: return
-    
+
     repeat_region.read_dict[read.read_name] = read
 
     repeat_region.buffer_len = 50
@@ -754,7 +754,7 @@ def initial_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int)
     template_repeat_size = int(get_max_read_length_from_fastq(repeat_region.core_seq_fq_file) / len(repeat_region.repeat_unit_seq)) + 1
 
     ## reduce anchor length
-    fast_estimation = True
+    fast_estimation = False
     if fast_estimation:
         if repeat_region.left_anchor_len > repeat_region.buffer_len:
             repeat_region.left_anchor_seq = repeat_region.left_anchor_seq[-repeat_region.buffer_len:]
@@ -951,6 +951,9 @@ def nanoRepeat_bam (input_args, in_bam_file):
     
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
-        quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
-
+        try:
+            quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
+        except:
+            tk.eprint(f'ERROR: failed_one_region: {repeat_region.to_unique_id()}')
     return
+
