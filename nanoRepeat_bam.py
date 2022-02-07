@@ -312,7 +312,7 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
     template_repeat_size = int(max(round1_repeat_size_list) * 1.5) + 1
 
     if template_repeat_size < max(round1_repeat_size_list) + 10:
-        template_repeat_size = max(round1_repeat_size_list) + 10
+        template_repeat_size = int(max(round1_repeat_size_list) + 10)
     
     round1_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'round1_ref.fasta')
     repeat_region.temp_file_list.append(round1_fasta_file)
@@ -380,7 +380,9 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     
     tk.eprint('NOTICE: program finished. output files are here: %s' % input_args.out_dir)
 
-    shutil.rmtree(repeat_region.temp_out_dir)
+    debug = True
+    if not debug:
+        shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
@@ -671,10 +673,15 @@ def round3_estimation_for1read(repeat_region: RepeatRegion, read_paf_list):
     if len(read_paf_list) == 0: return
 
     read_paf_list.sort(key = lambda paf:paf.align_score, reverse = True)
-    best_paf = read_paf_list[0]
-    read_name = best_paf.qname
-    if best_paf.tstart < repeat_region.left_anchor_len and best_paf.tlen - best_paf.tend < repeat_region.right_anchor_len:
-        repeat_region.read_dict[read_name].round3_repeat_size = int(best_paf.tname)
+    best_paf_repeat_size_list = []
+    read_name = read_paf_list[0].qname
+    for i in range(0, len(read_paf_list)):
+        if read_paf_list[i].align_score < read_paf_list[0].align_score: break
+        if read_paf_list[i].tstart < repeat_region.left_anchor_len and read_paf_list[i].tlen - read_paf_list[i].tend < repeat_region.right_anchor_len and read_paf_list[i].align_score == read_paf_list[0].align_score:
+            best_paf_repeat_size_list.append(int(read_paf_list[i].tname))
+
+    if len(best_paf_repeat_size_list) > 0:
+        repeat_region.read_dict[read_name].round3_repeat_size = np.mean(best_paf_repeat_size_list)
     else:
         repeat_region.read_dict[read_name].round3_repeat_size = repeat_region.read_dict[read_name].round2_repeat_size
     return
@@ -719,6 +726,8 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     if max_template_repeat_size < max(estimated_repeat_size_list) + 10:
         max_template_repeat_size = int(max(estimated_repeat_size_list) + 10) + 1
     
+    if min_template_repeat_size < 0: min_template_repeat_size = 0
+    
     template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'round3_ref.fasta')
     repeat_region.temp_file_list.append(template_fasta_file)
     template_fasta_fp    = open(template_fasta_file, 'w')
@@ -733,7 +742,7 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     repeat_region.temp_file_list.append(round3_paf_file)
 
     preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -N 1 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
+    cmd = f'{minimap2} -N 100 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
     round3_estimation_from_paf(repeat_region, round3_paf_file)
