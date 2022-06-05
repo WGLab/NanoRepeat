@@ -77,3 +77,5 @@ class PAF:
     def output_core(self):
         return f'{self.qname}\t{self.strand}\t{self.qlen}\t{self.qstart}\t{self.qend}\t{self.tname}\t{self.tlen}\t{self.tstart}\t{self.tend}'
         
+
+        

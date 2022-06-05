@@ -31,11 +31,12 @@ SOFTWARE.
 import os
 import sys
 import numpy as np
-import math
 import gzip
 import argparse
+import shutil
 
 import tk
+from paf import *
 
 from sklearn.mixture import GaussianMixture
 
@@ -45,7 +46,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib import cm
-matplotlib.rcParams['font.sans-serif'] = "Arial"
+#matplotlib.rcParams['font.sans-serif'] = "Arial"
 matplotlib.rcParams['font.family'] = "sans-serif"
 
 debug = 1
@@ -69,10 +70,9 @@ def parse_user_arguments():
     parser = argparse.ArgumentParser(description='Joint quantification of two adjacent tandem repeats from long-read amplicon sequencing data ')
     ### required arguments ###
     parser.add_argument('--in_fq',        required = True,  metavar = 'PATH',   type = str, help = 'input fastq file')
-    parser.add_argument('--platform',     required = True,  metavar = 'STRING', type = str, help = 'three valid values: `ont`, `pacbio`, `consensus`')
     parser.add_argument('--ref_fasta',    required = True,  metavar = 'PATH',   type = str, help = 'reference genome sequence in FASTA format')
-    parser.add_argument('--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat, coordinates are 1-based (e.g. chr4:3074877:3074933:CAG:200)')
-    parser.add_argument('--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat, coordinates are 1-based (e.g. chr4:3074946:3074966:CCG:20)')
+    parser.add_argument('--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat, coordinates are 0-based (e.g. chr4:3074876:3074933:CAG:200)')
+    parser.add_argument('--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat, coordinates are 0-based (e.g. chr4:3074946:3074966:CCG:20)')
     parser.add_argument('--out_dir',      required = True,  metavar = 'PATH',   type = str, help = 'path to the output directory')
     parser.add_argument('--version',      action='version', version='%(prog)s 0.3.0')
 
@@ -82,17 +82,6 @@ def parse_user_arguments():
     parser.add_argument('--ploidy',       required = False, metavar = 'INT',    type = int, default = 2,  help = 'ploidy of the sample (default: 2)')
 
     input_args = parser.parse_args()
-
-    input_args.platform = input_args.platform.strip('`')
-    input_args.platform = input_args.platform.strip('\'')
-    input_args.platform = input_args.platform.strip('\"')
-
-    valid_platform_list = ['ont', 'pacbio', 'consensus']
-    input_args.platform = input_args.platform.lower()
-
-    if input_args.platform not in valid_platform_list:
-        tk.eprint('ERROR: --platform should be one of the three valid values: ont, pacbio, consensus !\n')
-        sys.exit(1)
 
     if input_args.ploidy < 1:
         tk.eprint('ERROR: --ploidy must be >= 1 !\n')
@@ -119,11 +108,11 @@ def parse_user_arguments():
     tk.check_input_file_exists(input_args.minimap2)
 
     if len(input_args.repeat1.split(':')) != 5:
-        tk.eprint('ERROR! --repeat1 should be in this format: chr:start:end:repeat_unit:max_size (e.g. chr4:3074876:3074933:CAG:200)')
+        tk.eprint('ERROR! --repeat1 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074876:3074933:CAG:200)')
         sys.exit(1)
     
     if len(input_args.repeat2.split(':')) != 5:
-        tk.eprint('ERROR! --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (e.g. chr4:3074876-3074933:CAG:200)')
+        tk.eprint('ERROR! --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074946:3074966:CCG:20)')
         sys.exit(1)
 
     return input_args
@@ -131,11 +120,11 @@ def parse_user_arguments():
 def main():
 
     input_args = parse_user_arguments()
-    ampRepeat_joint (input_args)
+    nanoRepeat_joint (input_args)
 
     return
 
-def ampRepeat_joint (input_args):
+def nanoRepeat_joint (input_args):
 
     n_input_reads = tk.count_fastq(input_args.in_fq)
     if n_input_reads < input_args.ploidy:
@@ -163,7 +152,7 @@ def ampRepeat_joint (input_args):
         sys.exit(1)
 
     in_fastq_prefix = os.path.splitext(os.path.split(input_args.in_fq)[1])[0]
-    temp_out_dir = os.path.join(input_args.out_dir, '%s.AmpRepeat.temp' % in_fastq_prefix)
+    temp_out_dir = os.path.join(input_args.out_dir, '%s.NanoRepeat.temp' % in_fastq_prefix)
     tk.create_dir(temp_out_dir)
 
     repeat_chrom_seq = tk.read_one_chr_from_fasta_file(input_args.ref_fasta, repeat1.chrom)
@@ -171,20 +160,17 @@ def ampRepeat_joint (input_args):
         tk.eprint('ERROR: ref_fasta file: %s has no valid sequence!\n' % input_args.ref_fasta)
         sys.exit(1)
     
-    initial_estimation = initial_estimate_repeat_size(input_args.minimap2, repeat_chrom_seq, input_args.in_fq, input_args.platform, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
+    platform = 'ont'
+    initial_estimation = initial_estimate_repeat_size(input_args.minimap2, repeat_chrom_seq, input_args.in_fq, platform, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
 
-    log_fn = 'repeatRepeat.log'
-    log_f  = open(log_fn, 'w')
-    log_f.write(initial_estimation.output_repeat2_boundaries())
-
-
-    final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, input_args.platform, input_args.num_threads, temp_out_dir)
+    final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, platform, input_args.num_threads, temp_out_dir)
     
     jointly_split_alleles_using_gmm (input_args.ploidy, repeat1, repeat2, final_estimation, input_args.in_fq, input_args.out_dir)
 
     tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
 
-    log_f.close()
+    shutil.rmtree(temp_out_dir)
+
     return
 
 
@@ -426,7 +412,7 @@ def estimate_two_repeats_from_paf(in_paf_file, left_anchor_len, mid_anchor_len, 
         if not line: continue
 
         col_list = line.strip().split('\t')
-        paf = tk.PAF(col_list)
+        paf = PAF(col_list)
         repeat_size1, repeat_size2 = paf.tname.split('-')
         repeat_size1 = int(repeat_size1)
         repeat_size2 = int(repeat_size2)
@@ -558,7 +544,7 @@ def round1_estimation_from_paf(round1_paf_file, repeat1, repeat2, left_anchor_le
         if not line: continue
 
         col_list = line.strip().split('\t')
-        paf = tk.PAF(col_list)
+        paf = PAF(col_list)
 
         if len(read_paf_list) == 0 or paf.qname == read_paf_list[0].qname:
             read_paf_list.append(paf)
@@ -790,7 +776,7 @@ def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm
 
     X = list()
     Y = list()
-
+    
     for readname in read_repeat_joint_count_dict:
         x, y = read_repeat_joint_count_dict[readname]
         X.append(x)
@@ -803,7 +789,10 @@ def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm
     fig, ax = plt.subplots()
     fig.set_size_inches(6, 4)
 
-    ax.scatter(X, Y, c=Z, s=15, edgecolor='')
+    try:
+        ax.scatter(X, Y, c=Z, s=15, edgecolor='')
+    except:
+        ax.scatter(X, Y, c=Z, s=15, edgecolor=['none'])
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -817,14 +806,26 @@ def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm
     ymin = min(Y)
     ymax = max(Y)
 
-    a = np.linspace(xmin, xmax, 200)
-    b = np.linspace(ymin, ymax, 200)
+    figure_max_x = int(((xmax * 1.4)/10.0 +1 )* 10)
+    figure_max_y = int(((ymax * 1.4)/10.0 +1 )* 10)
+
+    figure_min_x = int(((xmin / 1.4)/10.0 -1 )* 10)
+    figure_min_y = int(((ymin / 1.4)/10.0 -1 )* 10)
+
+    if figure_min_x < 10: figure_min_x = 0
+    if figure_min_y < 10: figure_min_y = 0
+
+    plt.xlim(figure_min_x, figure_max_x)
+    plt.ylim(figure_min_y, figure_max_y)
+
+    a = np.linspace(figure_min_x, figure_max_x, 400)
+    b = np.linspace(figure_min_y, figure_max_y, 400)
 
     A, B = np.meshgrid(a, b)
     AA = np.array([A.ravel(), B.ravel()]).T
     C = final_gmm.score_samples(AA)
     C = C.reshape(A.shape)
-    
+
     CS = plt.contour(A, B, C, levels=[score_cut_off], linestyles = 'dashed', colors = 'grey')
 
     plt.savefig(scatter_plot_file, dpi = 300)
@@ -926,8 +927,11 @@ def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, out_file):
 
     plt.figure (figsize=(6, 4))
     
+    max_x = 0
     for x in x_2d_list:
         plt.hist(x, bins = b)
+        if max_x < max(x):
+            max_x = max(x)
 
     for repeat_size in predicted_size_list:
         plt.axvline(x=repeat_size+0.5, color = 'grey', linestyle = ':')
@@ -936,8 +940,9 @@ def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, out_file):
     plt.title('Repeat size distribution (%s)' % repeat_id)
     plt.xlabel('repeat size')
     plt.ylabel('number of reads')
-    if debug:
-        plt.xlim(0, 150)
+    
+    max_x = int(((max_x * 1.618)/5.0 +1 )* 5)
+    plt.xlim(0, max_x)
 
     plt.savefig(out_file, dpi=300)
     plt.close('all')
@@ -1199,7 +1204,7 @@ class Repeat:
     def init_from_string(self, string):
         col_list = string.split(':')
         if len(col_list) != 5:
-            tk.eprint('ERROR! --repeat1 and --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (e.g. chr4:3074876:3074933:CAG:200')
+            tk.eprint('ERROR! --repeat1 and --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074876:3074933:CAG:200).')
             sys.exit(1)
         
         self.chrom, self.start, self.end, self.repeat_unit, self.max_size = col_list
@@ -1209,7 +1214,7 @@ class Repeat:
         self.min_size = 0
         self.max_size = int(self.max_size)
         self.repeat_id = '_'.join(col_list[0:4])
-        self.start -= 1
+        #self.start -= 1
         return self
 
 class Round1Estimation:

@@ -76,6 +76,7 @@ class RepeatRegion:
 
         self.temp_out_dir = None
         self.final_out_dir = None
+        self.out_prefix = None
 
         self.temp_file_list = []
 

@@ -46,13 +46,14 @@ def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, n
     cmd = f'{samtools} index {bam_prefix}.sorted.bam'
     tk.run_system_cmd(cmd)
 
+    os.remove(f'{bam_prefix}.sam')
+
     return f'{bam_prefix}.sorted.bam'
 
 def preprocess_fastq(input_args):
     
-    in_fastq_filename = os.path.split(input_args.input)[1]
-    bam_prefix        = os.path.join(input_args.out_dir, f'{in_fastq_filename}.minimap2')
-    in_bam_file       = map_fastq_to_ref_genome(input_args.input, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
+    bam_prefix    =  f'{input_args.out_prefix}.minimap2'
+    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
     
     nanoRepeat_bam.nanoRepeat_bam(input_args, in_bam_file)
     return
@@ -61,9 +62,9 @@ def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
-    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
-    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o ./output\n'
+    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
+    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
+    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
@@ -72,7 +73,7 @@ def main():
     parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
     parser.add_argument('-r', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
     parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
-    parser.add_argument('-o', '--out_dir', required = True, metavar = 'path/to/out_dir',   type = str, help = '(required) path to the output directory')
+    parser.add_argument('-o', '--out_prefix', required = True, metavar = 'prefix/of/output/files',   type = str, help = '(required) prefix of output files')
     
     # optional 
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
@@ -92,19 +93,20 @@ def main():
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
-   
     input_args.input             = os.path.abspath(input_args.input)
     input_args.ref_fasta         = os.path.abspath(input_args.ref_fasta)
-    input_args.out_dir           = os.path.abspath(input_args.out_dir)
+    input_args.out_prefix        = os.path.abspath(input_args.out_prefix)
     input_args.repeat_region_bed = os.path.abspath(input_args.repeat_region_bed)
 
     tk.eprint(f'NOTICE: input file is: {input_args.input}')
     tk.eprint(f'NOTICE: input type is: {input_args.type}')
     tk.eprint(f'NOTICE: referece fasta file is: {input_args.ref_fasta}')
-    tk.eprint(f'NOTICE: output dir is: {input_args.out_dir}')
+    tk.eprint(f'NOTICE: output prefix is: {input_args.out_prefix}')
     tk.eprint(f'NOTICE: repeat region bed file is: {input_args.repeat_region_bed}')
 
-    os.makedirs(input_args.out_dir, exist_ok=True)
+    out_dir = os.path.split(input_args.out_prefix)[0]
+    os.makedirs(out_dir, exist_ok=True)
+
     if input_args.type == 'fastq':
         preprocess_fastq(input_args)
     elif input_args.type == 'fasta':

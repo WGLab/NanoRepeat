@@ -277,7 +277,7 @@ def make_core_seq_fastq(repeat_region: RepeatRegion):
 
 def output_results(repeat_region:RepeatRegion):
 
-    read_count_file = os.path.join(repeat_region.final_out_dir, f'{repeat_region.to_unique_id()}.repeat_size.txt')
+    read_count_file =  f'{repeat_region.out_prefix}.repeat_size.txt'
     read_count_f = open(read_count_file, 'w')
 
     repeat_size_list = []
@@ -296,7 +296,7 @@ def output_results(repeat_region:RepeatRegion):
     for read_name in repeat_region.read_dict:
         repeat_size = repeat_region.read_dict[read_name].round3_repeat_size
         if repeat_size != None:
-            read_count_f.write(f'{read_name}\t{repeat_size}\n')
+            read_count_f.write(f'{read_name}\t{repeat_size:.1f}\n')
     read_count_f.close()
 
 def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, num_cpu: int):
@@ -324,8 +324,8 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
 
     round1_paf_file = os.path.join(repeat_region.temp_out_dir, 'round1.paf')
     repeat_region.temp_file_list.append(round1_paf_file)
-    preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
+    minimap2_parameters = ' -x map-ont -B 9 '
+    cmd = f'{minimap2} -c -t {num_cpu} {minimap2_parameters} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
     
     tk.eprint(f'NOTICE: running command: {cmd}')
     tk.run_system_cmd(cmd)
@@ -345,16 +345,16 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
 
 def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
 
-    temp_out_dir = os.path.join(input_args.out_dir, f'{repeat_region.to_unique_id()}')
+    temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_dir.{repeat_region.to_unique_id()}'
     os.makedirs(temp_out_dir, exist_ok=True)
 
     repeat_region.temp_out_dir = temp_out_dir
-    repeat_region.final_out_dir = input_args.out_dir
+    repeat_region.out_prefix = f'{input_args.out_prefix}.{repeat_region.to_unique_id()}'
     repeat_region.anchor_len = input_args.anchor_len
 
     # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
-    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | samtools fastq - > {repeat_region.region_fq_file}'
+    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file}'
     tk.run_system_cmd(cmd)
 
     # extract ref sequence
@@ -374,23 +374,27 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     tk.eprint('NOTICE: step 3: round 3 estimation')
     round3_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: step 3 finished')
-    
-    output_results(repeat_region)
-    #split_allele_using_gmm(input_args.ploidy, fine_tuned_repeat_count_dict, repeat_region.region_fq_file, input_args.out_dir)
-    
-    tk.eprint('NOTICE: program finished. output files are here: %s' % input_args.out_dir)
 
-    debug = True
-    if not debug:
-        shutil.rmtree(repeat_region.temp_out_dir)
+    split_allele_using_gmm(repeat_region, input_args.ploidy)
+    
+    tk.eprint('NOTICE: program finished.')
+    shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
-def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_dir):
+def split_allele_using_gmm(repeat_region, ploidy):
 
     if ploidy < 1:
         tk.eprint('ERROR! ploidy must be >= 1 !')
         sys.exit()
+
+    read_repeat_count_dict = dict()
+    for read_name in repeat_region.read_dict:
+        if repeat_region.read_dict[read_name].round3_repeat_size != None:
+            read_repeat_count_dict[read_name] = repeat_region.read_dict[read_name].round3_repeat_size
+
+    in_fastq_file = repeat_region.region_fq_file
+    out_prefix = repeat_region.out_prefix
 
     in_fastq_filename = os.path.split(in_fastq_file)[1]
     proba_cutoff = 0.95
@@ -414,7 +418,6 @@ def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_di
         sys.stderr.write('ERROR! number of reads passed filtering: %d' % num_data_points)
 
     best_n_components = chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, cov_type)
-    #best_n_components = ploidy
     final_gmm = GaussianMixture(n_components=best_n_components, covariance_type=cov_type, n_init = 10).fit(read_repeat_count_array)
     old_read_label_list = list(final_gmm.predict(read_repeat_count_array))
     proba2darray = final_gmm.predict_proba(read_repeat_count_array)
@@ -466,12 +469,8 @@ def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_di
         if readname not in qc_failed_readname_set:
             qc_passed_each_allele_repeat_count_2d_list[label].append(repeat_count)
 
-
-    in_fastq_prefix = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
- 
-    out_prefix = os.path.join(out_dir, '%s.GMM' % (in_fastq_prefix))
-
-    out_summray_file = out_prefix + '.summary.txt'
+    out_summary_file = out_prefix + '.summary.txt'
+    out_detail_file  = out_prefix + '.details.txt'
     hist_figure_file = out_prefix + '.hist.png'
 
     out_allele_fastq_file_list = list()
@@ -512,17 +511,17 @@ def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_di
 
     predicted_repeat_count_list = list()
     meta_info_list = list()
-    out_summray_fp = open(out_summray_file, 'w')
-    header = f'##{in_fastq_filename}\tGMM'
+    out_summray_fp = open(out_summary_file, 'w')
+    out_detail_fp  = open(out_detail_file, 'w')
+    out_summray_fp.write(f'Repeat_Region={repeat_region.to_unique_id()}\n')
     for read_label in range(0, len(qc_passed_each_allele_repeat_count_2d_list)):
         allele_repeat_count_list = qc_passed_each_allele_repeat_count_2d_list[read_label]
         allele_id = read_label + 1
         meta_info = Metainfo().init_from_repeat_size_list(allele_repeat_count_list, allele_id)
         meta_info_list.append(meta_info)
         predicted_repeat_count_list.append(meta_info.predicted_repeat_size)
-        header += f'\t{meta_info.output()}'
+        out_summray_fp.write(f'{meta_info.output()}\n')
     
-    out_summray_fp.write(header + '\n')
   
     out_info_list = list()
     for readname in all_info_dict:
@@ -534,14 +533,18 @@ def split_allele_using_gmm(ploidy, read_repeat_count_dict, in_fastq_file, out_di
 
     out_info_list.sort(key = lambda x:x[1])
 
-    out_summray_fp.write('#readname\trepeat_size\tallele\tprobablity\n')
+    out_detail_fp.write('#readname\trepeat_size\tallele_id\tprobablity\tconfidence_of_allele_assignment\n')
     for i in range(0, len(out_info_list)):
         readname, repeat_count, allele_id, max_prob = out_info_list[i]
-        if max_prob < proba_cutoff: continue
-        out_summray_fp.write('%s\t%d\t%d\t%f\n' % (readname, repeat_count, allele_id, max_prob))
+        if max_prob < proba_cutoff: 
+            confidence = 'LOW'
+        else:
+            confidence = 'HIGH'
+        out_detail_fp.write(f'{readname}\t{repeat_count:.1f}\t{allele_id}\t{max_prob:.2f}\t{confidence}\n')
+        #out_detail_fp.write('%s\t%d\t%d\t%f\n' % (readname, repeat_count, allele_id, max_prob))
 
     out_summray_fp.close()
-
+    out_detail_fp.close()
     plot_repeat_counts(qc_passed_each_allele_repeat_count_2d_list, predicted_repeat_count_list, hist_figure_file)
 
     return
@@ -607,7 +610,11 @@ def analysis_outlier(read_repeat_count_dict):
         repeat_count = read_repeat_count_dict[readname]
         read_repeat_count_list.append(repeat_count)
 
-    mean = np.mean(read_repeat_count_list)
+    try:
+        mean = np.mean(read_repeat_count_list)
+    except:
+        print(read_repeat_count_list)
+        sys.exit(1)
     std = np.std(read_repeat_count_list)
 
     min_repeat_count_cutoff = mean - 3 * std
@@ -741,8 +748,8 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
     repeat_region.temp_file_list.append(round3_paf_file)
 
-    preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -N 100 -c --eqx -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
+    minimap2_parameters = ' -x map-ont -B 9 '
+    cmd = f'{minimap2} {minimap2_parameters} -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
     round3_estimation_from_paf(repeat_region, round3_paf_file)
@@ -786,6 +793,6 @@ def nanoRepeat_bam (input_args, in_bam_file):
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
         quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
-        #tk.eprint(f'ERROR: failed_one_region: {repeat_region.to_unique_id()}')
+
     return
 

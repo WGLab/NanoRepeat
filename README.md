@@ -1,6 +1,6 @@
 # NanoRepeat
 
-NanoRepeat is a computational tool for tandem repeat detection from Nanopore long-read sequencing data. 
+NanoRepeat is a computational tool for tandem repeat quantification from Oxford Nanopore long-read sequencing data
 
 ## Table of Contents
 
@@ -48,9 +48,8 @@ After the repeat number of each read was determined, NanoRepeat classifies the r
 4. Minimap2 (version >= 2.8). NanoRepeat calls `minimap2` to do sequence alignment. If you don't have `minimap2` in your system, you can install it following the instructions [here](https://github.com/lh3/minimap2#install). If you are using Linux, you can acquire precompiled binaries using the following commands:
 
     ```
-    wget https://github.com/lh3/minimap2/releases/download/v2.17/minimap2-2.17_x64-linux.tar.bz2
-    tar -jxvf minimap2-2.17_x64-linux.tar.bz2
-    ./minimap2-2.17_x64-linux/minimap2
+    wget https://github.com/lh3/minimap2/releases/download/v2.24/minimap2-2.24_x64-linux.tar.bz2
+    tar -jxvf minimap2-2.24_x64-linux.tar.bz2
     ```
 ## <a name="Installation"></a>3 Installation
 
@@ -64,38 +63,33 @@ The scripts in the `./NanoRepeat` can run directly without additional compilatio
 ## <a name="Usage"></a>4 Usage
 
 ```
-usage: NanoRepeat.py [-h] --in_fq PATH --platform STRING --ref_fasta PATH
-                    --repeat_region chr:start-end --repeat_unit STRING
-                    --max_repeat_size INT --out_dir PATH [--num_threads INT]
-                    [--minimap2 PATH] [--fixed_cutoff_value INT]
-                    [--ploidy INT] [--anchor_len INT] [--version]
+usage: nanoRepeat.py [-h] -i input_file -t input_type -r ref.fasta -b repeat_regions.bed -o prefix/of/output/files [-c INT] [--samtools path/to/samtools] [--minimap2 path/to/minimap2] [--ploidy INT] [--anchor_len INT]
 
-A tools for short tandem repeat detection from long-read amplicon sequencing
-data
+NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing
 
 optional arguments:
   -h, --help            show this help message and exit
-  --in_fq PATH          path to input fastq file
-  --platform STRING     three valid values: ont, pacbio, consensus
-  --ref_fasta PATH      path to reference genome sequence in FASTA format
-  --repeat_region chr:start-end
-                        repeat region in the reference genome (e.g.
-                        chr4:3074876-3074939, coordinates are 1-based)
-  --repeat_unit STRING  sequence of the repeat unit (e.g. CAG)
-  --max_repeat_size INT
-                        maximum possible number of the repeat unit
-  --out_dir PATH        path to the output directory
-  --num_threads INT     number of threads used by minimap2 (default: 1)
-  --minimap2 PATH       path to minimap2 (default: using environment default)
-  --fixed_cutoff_value INT
-                        split alleles using this fixed_cutoff_value (if set,
-                        ploidy will be set to 2). reads with repeat size >=
-                        fixed_cutoff_value will be assigned to the second
-                        allele
-  --ploidy INT          ploidy of the sample (default: 2)
-  --anchor_len INT      length of up/downstream sequence to help identify the
-                        repeat region (default: 1000 bp, increase this value
-                        if the 1000 bp up/downstream sequences are also
-                        repeat)
-  --version             show program's version number and exit
+  -i input_file, --input input_file
+                        (required) path to input file (supported format: sorted_bam, fastq or fasta)
+  -t input_type, --type input_type
+                        (required) input file type (valid values: bam, fastq or fasta)
+  -r ref.fasta, --ref_fasta ref.fasta
+                        (required) path to reference genome sequence in FASTA format
+  -b repeat_regions.bed, --repeat_region_bed repeat_regions.bed
+                        (required) path to repeat region file (in bed format)
+  -o prefix/of/output/files, --out_prefix prefix/of/output/files
+                        (required) prefix of output files
+  -c INT, --num_cpu INT
+                        (optional) number of CPU cores (default: 1)
+  --samtools path/to/samtools
+                        (optional) path to samtools (default: using environment default)
+  --minimap2 path/to/minimap2
+                        (optional) path to minimap2 (default: using environment default)
+  --ploidy INT          (optional) ploidy of the sample (default: 2)
+  --anchor_len INT      (optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)
+
+Examples: 
+	1) python nanoRepeat.py -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
+	2) python nanoRepeat.py -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
+	3) python nanoRepeat.py -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
 ```
