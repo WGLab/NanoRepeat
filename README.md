@@ -51,6 +51,17 @@ After the repeat number of each read was determined, NanoRepeat classifies the r
     wget https://github.com/lh3/minimap2/releases/download/v2.24/minimap2-2.24_x64-linux.tar.bz2
     tar -jxvf minimap2-2.24_x64-linux.tar.bz2
     ```
+
+5. Samtools (version >= 1.3). NanoRepeat calls `samtools` to process SAM and BAM files. If you don't have `samtools` in your system, you can download the source code and compile it.
+
+    ```
+    wget https://github.com/samtools/samtools/releases/download/1.7/samtools-1.7.tar.bz2
+    tar -jxvf samtools-1.7.tar.bz2
+    cd samtools-1.7
+    make
+    ```
+   You can also install `samtools` using Anaconda: `conda install -c bioconda samtools`. 
+    
 ## <a name="Installation"></a>3 Installation
 
 You can clone the repository of NanoRepeat using the following command.
