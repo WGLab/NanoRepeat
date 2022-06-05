@@ -60,7 +60,7 @@ After the repeat number of each read was determined, NanoRepeat classifies the r
     cd samtools-1.7
     make
     ```
-   You can also install `samtools` using Anaconda: `conda install -c bioconda samtools`. 
+   Please note that some libraries (e.g. HTSlib) are needed to compile `samtools`. If you are unable to compile `samtools` from the source code, you can install `samtools` using Anaconda: `conda install -c bioconda samtools`. 
     
 ## <a name="Installation"></a>3 Installation
 
