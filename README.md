@@ -52,15 +52,11 @@ After the repeat number of each read was determined, NanoRepeat classifies the r
     tar -jxvf minimap2-2.24_x64-linux.tar.bz2
     ```
 
-5. Samtools (version >= 1.3). NanoRepeat calls `samtools` to process SAM and BAM files. If you don't have `samtools` in your system, you can download the source code and compile it.
+5. Samtools (version >= 1.3). NanoRepeat calls `samtools` to process SAM and BAM files. 
+    - If you have `sudo` privileges, you can run `sudo yum install samtools` (ubuntu) or `sudo yum install samtools` (CentOS/Red Hat) to instal samtools. 
+    - If you use Anaconda, you can use `conda install -c bioconda samtools` to install samtools in your Conda environment. 
+    - You can build it from the source code (see instructions [here](https://github.com/samtools/samtools#building-samtools)). Building samtools requires multiple libraries and so this method is more complicated than the above two methods. 
 
-    ```
-    wget https://github.com/samtools/samtools/releases/download/1.7/samtools-1.7.tar.bz2
-    tar -jxvf samtools-1.7.tar.bz2
-    cd samtools-1.7
-    make
-    ```
-   Please note that some libraries (e.g. HTSlib) are needed to compile `samtools`. If you are unable to compile `samtools` from the source code, you can install `samtools` using Anaconda: `conda install -c bioconda samtools`. 
     
 ## <a name="Installation"></a>3 Installation
 
