@@ -17,11 +17,11 @@ NanoRepeat can quantify a single repeat, or perform a joint quantification of tw
 ### 1.1 Quantification of a single repeat (most common)
 NanoRepeat generates a series of sequences where the repeat sizes are from 1 to N (a user specified value) with 10 kb left and right flanking sequences. The reads were aligned to this series of sequences using [minimap2](https://github.com/lh3/minimap2) with the parameter for the specified platform. The repeat size of the sequence with the highest alignment score was the estimate of the repeat size of the read. 
 
-<p align="center"><img src="images/repeat_size_estimation.jpg" alt="repeat_size_estimation" width="100%"></p>
+<p align="center"><img src="../images/repeat_size_estimation.jpg" alt="repeat_size_estimation" width="100%"></p>
 
 After the repeat size of each read is determined, NanoRepeat uses the Gaussian mixture model (GMM) to assign reads to alleles. First, outlier reads with repeat sizes that are outside three standard deviations from the mean are removed. Next, we assume that the repeat size is a mixture of N Gaussian models, where N is 1 or 2 for a diploid genome. We use the Bayesian information criterion (BIC) to select the best N. After the best N is selected, the label of each read is predicted using the trained Gaussian mixture model. In high-confidence mode, a read is discarded if it is not confidently assigned to a Gaussian model (p < 0.95) or if it is outside three standard deviations from the mean of that model.
 
-<p align="center"><img src="images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
+<p align="center"><img src="../images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
 
 ### 1.2 Joint quantification two adjacent repeats
 
