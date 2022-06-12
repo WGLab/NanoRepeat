@@ -1,4 +1,4 @@
-# NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore long-read sequencing data
+# NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore sequencing data
 
 ## Table of Contents
 
@@ -72,25 +72,26 @@ HTT_amplicon.fastq.repeat_size.txt
 
 The `*qc_passed.allele1.fastq` file is the reads assigned to the first allele and the `qc_passed.allele2.fastq` is the reads assigned to the second allele. 
 
-The `*summary.txt` file gives the quantification of the repeat sizes. 
+The `*summary.txt` file gives the quantification of the repeat sizes. If you copy the content of the `HTT_amplicon.fastq.JointGMM.summary.txt` file to an Excel sheet and transpose the data, you will see the following table: 
 
-For example, 
-```
-$ cat HTT_amplicon.fastq.JointGMM.summary.txt
-#input_fastq	method	num_alleles	gmm_cov_repeat1	gmm_cov_repeat2	allele1_num_reads	chr4_3074876_3074933_CAG_repeat_size1	chr4_3074946_3074966_CCG_repeat_size1	allele2_num_reads	chr4_3074876_3074933_CAG_repeat_size2	chr4_3074946_3074966_CCG_repeat_size2
-HTT_amplicon.fastq.gz	JointGMM	2	7.8383	1.9475	705	17	10	821	55	7
-```
-If you copy the output to an Excel sheet, you will see the following table: 
+#input_fastq | HTT_amplicon.fastq.gz
+-- | --
+method | JointGMM
+num_alleles | 2
+gmm_cov_repeat1 | 7.8383
+gmm_cov_repeat2 | 1.9475
+allele1_num_reads | 705
+chr4_3074876_3074933_CAG_repeat_size1 | 17
+chr4_3074946_3074966_CCG_repeat_size1 | 10
+allele2_num_reads | 821
+chr4_3074876_3074933_CAG_repeat_size2 | 55
+chr4_3074946_3074966_CCG_repeat_size2 | 7
 
-#input_fastq | method | num_alleles | gmm_cov_repeat1 | gmm_cov_repeat2 | allele1_num_reads | chr4_3074876_3074933_CAG_repeat_size1 | chr4_3074946_3074966_CCG_repeat_size1 | allele2_num_reads | chr4_3074876_3074933_CAG_repeat_size2 | chr4_3074946_3074966_CCG_repeat_size2
--- | -- | -- | -- | -- | -- | -- | -- | -- | -- | --
-HTT_amplicon.fastq.gz | JointGMM | 2 | 7.8383 | 1.9475 | 705 | 17 | 10 | 821 | 55 | 7
 
-
-The CAG repeat sizes are 17/55. 
-The CAG repeat sizes are 10/7. 
-allele 1 has 705 reads
-allele 2 has 821 reads 
+The CAG repeat sizes of allele 1 and allele 2 are 17 and 55, respectively. 
+The CCG repeat sizes of allele 1 and allele 2 are 10 and 7, respectively. 
+705 reads are confidently assigned to allele 1. 
+821 reads are confidently assigned to allele 2. 
 
 The `*.repeat_size.txt` file reports the repeat size of each read. 
 
