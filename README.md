@@ -1,6 +1,4 @@
-# NanoRepeat
-
-NanoRepeat is a computational tool for quantification of Short Tandem Repeats (STRs) from Oxford Nanopore long-read sequencing data
+# NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore long-read sequencing data
 
 ## Table of Contents
 
@@ -80,13 +78,13 @@ For example,
 ```
 $ cat HTT_amplicon.fastq.JointGMM.summary.txt
 #input_fastq	method	num_alleles	gmm_cov_repeat1	gmm_cov_repeat2	allele1_num_reads	chr4_3074876_3074933_CAG_repeat_size1	chr4_3074946_3074966_CCG_repeat_size1	allele2_num_reads	chr4_3074876_3074933_CAG_repeat_size2	chr4_3074946_3074966_CCG_repeat_size2
-/home/fangli/joint_quantification_HTT/NanoRepeat_example_data/HTT_amplicon.fastq.gz	JointGMM	2	7.8383	1.9475	705	17	10	821	55	7
+HTT_amplicon.fastq.gz	JointGMM	2	7.8383	1.9475	705	17	10	821	55	7
 ```
 If you copy the output to an Excel sheet, you will see the following table: 
 
 #input_fastq | method | num_alleles | gmm_cov_repeat1 | gmm_cov_repeat2 | allele1_num_reads | chr4_3074876_3074933_CAG_repeat_size1 | chr4_3074946_3074966_CCG_repeat_size1 | allele2_num_reads | chr4_3074876_3074933_CAG_repeat_size2 | chr4_3074946_3074966_CCG_repeat_size2
 -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | --
-/home/fangli/joint_quantification_HTT/NanoRepeat_example_data/HTT_amplicon.fastq.gz | JointGMM | 2 | 7.8383 | 1.9475 | 705 | 17 | 10 | 821 | 55 | 7
+HTT_amplicon.fastq.gz | JointGMM | 2 | 7.8383 | 1.9475 | 705 | 17 | 10 | 821 | 55 | 7
 
 
 The CAG repeat sizes are 17/55. 
