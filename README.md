@@ -1,102 +1,100 @@
 # NanoRepeat
 
-NanoRepeat is a computational tool for tandem repeat quantification from Oxford Nanopore long-read sequencing data
+NanoRepeat is a computational tool for quantification of Short Tandem Repeats (STRs) from Oxford Nanopore long-read sequencing data
 
 ## Table of Contents
 
-- [Workflow](#Workflow)
-- [Prerequisites](#Prerequisites)
-- [Installation](#Installation)
-- [Usage](#Usage)
+- [Installation](#installation)
+- [Repeat quantification](#repeat_quantification)
+  - [Joint quantification of two adjacent repeats](#joint_quantification)
 
 
-## <a name="Workflow"></a>1 Workflow
+## <a name="installation"></a> Installation
 
-NanoRepeat can quantify a single repeat, or perform a joint quantification of two adjacent repeats (such as the `CAG` and `CCG` repeats in the HTT gene).
+NanoRepeat requires the following software tools:
 
-### 1.1 Quantification of a single repeat (most common)
-NanoRepeat generates a series of sequences where the repeat sizes are from 1 to N (a user specified value) with 10 kb left and right flanking sequences. The reads were aligned to this series of sequences using [minimap2](https://github.com/lh3/minimap2) with the parameter for the specified platform. The repeat size of the sequence with the highest alignment score was the estimate of the repeat size of the read. 
+1. [Python](https://www.python.org/downloads/) (version >= 3.7)
+2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.8)
+3. [Samtools](https://github.com/samtools/samtools.git) (version >= 1.3)
 
-<p align="center"><img src="images/repeat_size_estimation.jpg" alt="repeat_size_estimation" width="100%"></p>
+You may alreadly have `minimap2` and `samtools` if you performed analysis of Oxford Nanopore sequencing data. You can use `which minimap2` and `which samtools` to check the full path to the two executable files.
 
-After the repeat size of each read is determined, NanoRepeat uses the Gaussian mixture model (GMM) to assign reads to alleles. First, outlier reads with repeat sizes that are outside three standard deviations from the mean are removed. Next, we assume that the repeat size is a mixture of N Gaussian models, where N is 1 or 2 for a diploid genome. We use the Bayesian information criterion (BIC) to select the best N. After the best N is selected, the label of each read is predicted using the trained Gaussian mixture model. In high-confidence mode, a read is discarded if it is not confidently assigned to a Gaussian model (p < 0.95) or if it is outside three standard deviations from the mean of that model.
-
-<p align="center"><img src="images/classify_reads.jpg" alt="classify_reads" width="100%"></p>
-
-### 1.2 Joint quantification two adjacent repeats
-
-In some regions, there are two adjacent repeats with very similar sequences. For example, in the HTT gene (cause Huntington's disease), the repeat is `(CAG)m-CAA-CAG-CCG-CCA-(CCG)n` and the CAG and CCG repeats are of variable sizes. In this case, NanoRepeat can perform a joint quantification of the two repeats. 
-
-![image](https://user-images.githubusercontent.com/9782948/142343820-94211ca0-8f25-4a1f-8991-332b7659c7b4.png)
-
-The joint quantification process has two steps: fast estimation and refining. In the fast estimation step, NanoRepeat performs a quick analysis of each repeat and estimates the lower and upper bound of the two repeat sizes. Let L1, L2 denote the lower bounds of the CAG and CCG repeats, and U1, U2 denote the upper bounds of the two repeats, respectively. In the refining step, NanoRepeat generates a batch of amplicon sequences with m (L1 ≤ m ≤ U1) CAG repeat units and n (L2 ≤ n ≤ U2) CCG repeat units. Each read is aligned to this batch of amplicon sequences with minimap2. The m and n that maximize the alignment score were the estimated CAG and CCG repeat sizes of the read.
-
-After the repeat number of each read was determined, NanoRepeat classifies the reads to alleles using a 2D GMM model. Outlier reads are removed as shown in the following figure. 
-
-![image](https://user-images.githubusercontent.com/9782948/142344767-f41787f1-29a4-4f53-821e-e9b2d01ab797.png)
-
-
-
-## <a name="Prerequisites"></a>2 Prerequisites
-
-1. Operating system: Linux or MacOS
-2. Python3 (Python 2 is NOT supported)
-3. Python packages: `numpy`, `sklearn`, `matplotlib`. You can use `pip` to install the packages:
-    ```
-    pip install --user numpy sklearn matplotlib
-    ```
-4. Minimap2 (version >= 2.8). NanoRepeat calls `minimap2` to do sequence alignment. If you don't have `minimap2` in your system, you can install it following the instructions [here](https://github.com/lh3/minimap2#install). If you are using Linux, you can acquire precompiled binaries using the following commands:
-
-    ```
-    wget https://github.com/lh3/minimap2/releases/download/v2.24/minimap2-2.24_x64-linux.tar.bz2
-    tar -jxvf minimap2-2.24_x64-linux.tar.bz2
-    ```
-
-5. Samtools (version >= 1.3). NanoRepeat calls `samtools` to process SAM and BAM files. 
-    - If you have `sudo` privileges, you can run `sudo yum install samtools` (ubuntu) or `sudo yum install samtools` (CentOS/Red Hat) to instal samtools. 
-    - If you use Anaconda, you can use `conda install -c bioconda samtools` to install samtools in your Conda environment. 
-    - You can build it from the source code (see instructions [here](https://github.com/samtools/samtools#building-samtools)). Building samtools requires multiple libraries and so this method is more complicated than the above two methods. 
-
-    
-## <a name="Installation"></a>3 Installation
-
-You can clone the repository of NanoRepeat using the following command.
+Once you installed the above tools, you can use the following commands to install NanoRepeat:
 ```
 git clone https://github.com/WGLab/NanoRepeat.git
+cd NanoRepeat
+pip install -r requirements.txt
+```
+## <a name="repeat_quantification"></a> Repeat quantification
+
+### <a name="joint_quantification"> Joint quantification of two adjacent STRs (such as the `CAG` and `CCG` repeats in the HTT gene)
+
+In exon-1 of the human HTT gene, there are two adjacent STRs: `CAG` and `CCG`. The sequence structure is: (CAG)<sub>m</sub>-CAA-CAG-CCG-CCA-(CCG)<sub>n</sub>. NanoRepeat can jointly quantify the two STRs and provide phased results. In our experience, looking at both repeats help generate better quantification results. 
+	
+We will demonstrate the usage of NanoRepeat using an example data set. 
+	
+```
+mkdir joint_quantification_HTT
+cd joint_quantification_HTT
+wget https://github.com/WGLab/NanoRepeat/releases/download/v1.0/NanoRepeat_example_data.tar.gz
+tar xzf NanoRepeat_example_data.tar.gz
+```
+	
+The input fastq file is here: `./NanoRepeat_example_data/HTT_amplicon.fastq.gz`.
+	
+The reference fasta file is here: `./NanoRepeat_example_data/GRCh38_chr4.0_4Mb.fasta`.
+
+Joint quantification: 
+```
+python path/to/NanoRepeat/nanoRepeat-joint.py  \
+    --in_fq ./NanoRepeat_example_data/HTT_amplicon.fastq.gz        \
+    --ref_fasta ./NanoRepeat_example_data/GRCh38_chr4.0_4Mb.fasta  \
+    --repeat1 chr4:3074876:3074933:CAG:200                         \
+    --repeat2 chr4:3074946:3074966:CCG:20                          \
+    --out_dir ./nanorepeat_output1                                 \
+    --minimap2 path/to/minimap2                                    \ # optional if the minimap2 binary is in your environment
+    --num_threads 4
 ```
 
-The scripts in the `./NanoRepeat` can run directly without additional compilation or installation.
+`--repeat1` and `--repeat2` specify the two repeat regions. The format of `--repeat1`  and `--repeat2` is `chrom:start_position:end_position:repeat_unit:max_size`. The start and end positions are 0-based (the first base on the chromosome is numbered 0). The start position is self-inclusive but the end position is non-inclusive, which is the same as the [BED format](https://genome.ucsc.edu/FAQ/FAQformat.html#format1). For example, a region of the first 100 bases of chr1 is denoted as `chr1:0:100`.  `max_size` is the max repeat length that we consider. Please set `max_size` to be a reasonal number. If `max_size` is too large (e.g. well beyond the max possible number), the speed of joint quantification might be slow. 
 
-## <a name="Usage"></a>4 Usage
+
+You will see the following files in the `./nanorepeat_output1` folder if NanoRepeat ran succesfully. 
 
 ```
-usage: nanoRepeat.py [-h] -i input_file -t input_type -r ref.fasta -b repeat_regions.bed -o prefix/of/output/files [-c INT] [--samtools path/to/samtools] [--minimap2 path/to/minimap2] [--ploidy INT] [--anchor_len INT]
-
-NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -i input_file, --input input_file
-                        (required) path to input file (supported format: sorted_bam, fastq or fasta)
-  -t input_type, --type input_type
-                        (required) input file type (valid values: bam, fastq or fasta)
-  -r ref.fasta, --ref_fasta ref.fasta
-                        (required) path to reference genome sequence in FASTA format
-  -b repeat_regions.bed, --repeat_region_bed repeat_regions.bed
-                        (required) path to repeat region file (in bed format)
-  -o prefix/of/output/files, --out_prefix prefix/of/output/files
-                        (required) prefix of output files
-  -c INT, --num_cpu INT
-                        (optional) number of CPU cores (default: 1)
-  --samtools path/to/samtools
-                        (optional) path to samtools (default: using environment default)
-  --minimap2 path/to/minimap2
-                        (optional) path to minimap2 (default: using environment default)
-  --ploidy INT          (optional) ploidy of the sample (default: 2)
-  --anchor_len INT      (optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)
-
-Examples: 
-	1) python nanoRepeat.py -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
-	2) python nanoRepeat.py -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
-	3) python nanoRepeat.py -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files
+HTT_amplicon.fastq.JointGMM.chr4_3074876_3074933_CAG.hist.png
+HTT_amplicon.fastq.JointGMM.chr4_3074946_3074966_CCG.hist.png
+HTT_amplicon.fastq.JointGMM.hist2d.png
+HTT_amplicon.fastq.JointGMM.qc_passed.allele1.fastq
+HTT_amplicon.fastq.JointGMM.qc_passed.allele2.fastq
+HTT_amplicon.fastq.JointGMM.scatter.png
+HTT_amplicon.fastq.JointGMM.summary.txt
+HTT_amplicon.fastq.repeat_size.txt
 ```
+
+The `*qc_passed.allele1.fastq` file is the reads assigned to the first allele and the `qc_passed.allele2.fastq` is the reads assigned to the second allele. 
+
+The `*summary.txt` file gives the quantification of the repeat sizes. 
+
+For example, 
+```
+$ cat HTT_amplicon.fastq.JointGMM.summary.txt
+#input_fastq	method	num_alleles	gmm_cov_repeat1	gmm_cov_repeat2	allele1_num_reads	chr4_3074876_3074933_CAG_repeat_size1	chr4_3074946_3074966_CCG_repeat_size1	allele2_num_reads	chr4_3074876_3074933_CAG_repeat_size2	chr4_3074946_3074966_CCG_repeat_size2
+/mnt/f/data_HTT/nanorepeat_tutorial/example1_output/example1.require2barcodes.fwd.A1B01.rev.A1B01.fastq	JointGMM	2	7.8383	1.9475	705	17	10	821	55	7
+```
+If you copy the output to an Excel sheet, you will see the following table: 
+
+#input_fastq | method | num_alleles | gmm_cov_repeat1 | gmm_cov_repeat2 | allele1_num_reads | chr4_3074876_3074933_CAG_repeat_size1 | chr4_3074946_3074966_CCG_repeat_size1 | allele2_num_reads | chr4_3074876_3074933_CAG_repeat_size2 | chr4_3074946_3074966_CCG_repeat_size2
+-- | -- | -- | -- | -- | -- | -- | -- | -- | -- | --
+./joint_quantification_HTT/NanoRepeat_example_data/HTT_amplicon.fastq.gz | JointGMM | 2 | 7.8383 | 1.9475 | 705 | 17 | 10 | 821 | 55 | 7
+
+
+The CAG repeat sizes are 17/55. 
+The CAG repeat sizes are 10/7. 
+allele 1 has 705 reads
+allele 2 has 821 reads 
+
+The `*.repeat_size.txt` file reports the repeat size of each read. 
+
+The figures are the repeat size distribution. 
+	
