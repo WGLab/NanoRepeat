@@ -34,19 +34,19 @@ We will demonstrate the usage of NanoRepeat using an example data set.
 ```
 mkdir joint_quantification_HTT
 cd joint_quantification_HTT
-wget https://github.com/WGLab/NanoRepeat/releases/download/v1.0/NanoRepeat_example_data.tar.gz
-tar xzf NanoRepeat_example_data.tar.gz
+wget https://github.com/WGLab/NanoRepeat/releases/download/v1.0/NanoRepeat_v1.0_example_data.tar.gz
+tar xzf NanoRepeat_v1.0_example_data.tar.gz
 ```
 	
-The input fastq file is here: `./NanoRepeat_example_data/HTT_amplicon.fastq.gz`.
+The input fastq file is here: `./NanoRepeat_v1.0_example_data/HTT_amplicon.fastq.gz`.
 	
-The reference fasta file is here: `./NanoRepeat_example_data/GRCh38_chr4.0_4Mb.fasta`.
+The reference fasta file is here: `./NanoRepeat_v1.0_example_data/GRCh38_chr4.0_4Mb.fasta`.
 
 Joint quantification: 
 ```
 python path/to/NanoRepeat/nanoRepeat-joint.py  \
-    --in_fq ./NanoRepeat_example_data/HTT_amplicon.fastq.gz        \
-    --ref_fasta ./NanoRepeat_example_data/GRCh38_chr4.0_4Mb.fasta  \
+    --in_fq ./NanoRepeat_v1.0_example_data/HTT_amplicon.fastq.gz        \
+    --ref_fasta ./NanoRepeat_v1.0_example_data/GRCh38_chr4.0_4Mb.fasta  \
     --repeat1 chr4:3074876:3074933:CAG:200                         \
     --repeat2 chr4:3074946:3074966:CCG:20                          \
     --out_dir ./nanorepeat_output1                                 \
