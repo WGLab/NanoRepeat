@@ -31,6 +31,7 @@ import string
 import sys
 import shutil
 import numpy as np
+import random
 import tk
 from repeat_region import *
 from paf import *
@@ -42,6 +43,34 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from typing import List
+
+
+class Metainfo:
+    def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
+        self.allele_id = allele_id
+        self.num_reads = num_reads
+        self.predicted_repeat_size = predicted_repeat_size
+        self.min_repeat_size = min_repeat_size
+        self.max_repeat_size = max_repeat_size
+    
+    def init_from_repeat_size_list(self, repeat_size_list, allele_id):
+        
+        self.allele_id = allele_id
+        self.num_reads = len(repeat_size_list)
+        if len(repeat_size_list) == 0:
+            self.predicted_repeat_size = -1
+            self.min_repeat_size = -1 
+            self.max_repeat_size = -1
+            return self
+        
+        self.min_repeat_size = min(repeat_size_list)
+        self.max_repeat_size = max(repeat_size_list)
+        self.predicted_repeat_size = int(np.median(repeat_size_list) + 0.5)
+        return self
+
+    def output(self):
+        return 'allele_id=%d\tnum_reads=%d\tpredicted_repeat_size=%d\tmin_repeat_size=%d\tmax_repeat_size=%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
+
 
 def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
 
@@ -122,6 +151,8 @@ def check_anchor_mapping(one_read_anchor_paf_list: List[PAF]):
         return False
 
 def find_anchor_locations_for1read(read_paf_list: List[PAF], repeat_region: RepeatRegion):
+
+    if len(read_paf_list) == 0: return
 
     left_anchor_paf_list  = []
     right_anchor_paf_list = []
@@ -227,6 +258,7 @@ def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, 
     cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
     tk.eprint(f'NOTICE: running command: {cmd}')
     tk.run_system_cmd(cmd)
+
     find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_file)
     
     return
@@ -357,11 +389,17 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file}'
     tk.run_system_cmd(cmd)
 
+    fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
+    if fastq_file_size == 0:
+        tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_unique_id()}')
+        #shutil.rmtree(repeat_region.temp_out_dir)
+        return
+
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
     
     tk.eprint('NOTICE: step 1: finding anchor location in reads')
-    find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
+    status = find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: step 1 finished')
 
     # make core sequence fastq
@@ -378,11 +416,14 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     split_allele_using_gmm(repeat_region, input_args.ploidy)
     
     tk.eprint('NOTICE: program finished.')
-    shutil.rmtree(repeat_region.temp_out_dir)
+    #shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
 def split_allele_using_gmm(repeat_region, ploidy):
+
+    in_fastq_file = repeat_region.region_fq_file
+    out_prefix = repeat_region.out_prefix
 
     if ploidy < 1:
         tk.eprint('ERROR! ploidy must be >= 1 !')
@@ -393,11 +434,36 @@ def split_allele_using_gmm(repeat_region, ploidy):
         if repeat_region.read_dict[read_name].round3_repeat_size != None:
             read_repeat_count_dict[read_name] = repeat_region.read_dict[read_name].round3_repeat_size
 
-    in_fastq_file = repeat_region.region_fq_file
-    out_prefix = repeat_region.out_prefix
+    if len(read_repeat_count_dict) == 0:
+        tk.eprint(f'ERROR! No reads were found for repeat region: {repeat_region.to_unique_id()}')
+        out_summary_file = out_prefix + '.summary.txt'
+        out_summary_f = open(out_summary_file, 'w')
+        out_summary_f.close()
+        out_detail_file  = out_prefix + '.details.txt'
+        out_detail_f = open(out_detail_file, 'w')
+        out_detail_f.close()
+        return
 
-    in_fastq_filename = os.path.split(in_fastq_file)[1]
+    if len(read_repeat_count_dict) == 1:
+        out_summary_file = out_prefix + '.summary.txt'
+        out_detail_file  = out_prefix + '.details.txt'
+
+        out_summary_f = open(out_summary_file, 'w')
+        out_summary_f.write(f'Repeat_Region={repeat_region.to_unique_id()}\n')
+        for read_name in read_repeat_count_dict:
+            predicted_repeat_size = read_repeat_count_dict[read_name]
+        meta_info     = Metainfo(allele_id = 0, num_reads = 1, predicted_repeat_size = predicted_repeat_size, min_repeat_size = predicted_repeat_size, max_repeat_size = predicted_repeat_size)
+        out_summary_f.write(f'{meta_info.output()}\n')
+        out_summary_f.close()
+        out_detail_f = open(out_detail_file, 'w')
+        out_detail_f.write('#readname\trepeat_size\tallele_id\tprobablity\tconfidence_of_allele_assignment\n')
+        out_detail_f.write(f'{read_name}\t{predicted_repeat_size:.1f}\t{0}\t1.00\tHIGH\n')
+        out_detail_f.close()
+        return 
+
+
     proba_cutoff = 0.95
+    min_std = 1.0
     cov_type = 'tied'
     
     min_repeat_count_cutoff, max_repeat_count_cutoff = analysis_outlier(read_repeat_count_dict)
@@ -413,15 +479,27 @@ def split_allele_using_gmm(repeat_region, ploidy):
     num_data_points = len(read_repeat_count_list)
     read_repeat_count_array = read_repeat_count_array.reshape(num_data_points, 1)
 
+    simulated_read_repeat_count_list = read_repeat_count_list * 500
+    for i in range(0, len(simulated_read_repeat_count_list)):
+        random_error = random.gauss(0, min_std)
+        simulated_read_repeat_count_list[i] = simulated_read_repeat_count_list[i] + random_error
+
+    num_data_points = len(simulated_read_repeat_count_list)
+
+    simualted_read_repeat_count_array = np.array(simulated_read_repeat_count_list)
+    simualted_read_repeat_count_array = simualted_read_repeat_count_array.reshape(num_data_points, 1)
+
     if num_data_points < 1:
         sys.stderr.write('ERROR! no enough reads!')
         sys.stderr.write('ERROR! number of reads passed filtering: %d' % num_data_points)
+        return
 
-    best_n_components = chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, cov_type)
-    final_gmm = GaussianMixture(n_components=best_n_components, covariance_type=cov_type, n_init = 10).fit(read_repeat_count_array)
+    best_n_components = chose_best_num_components (simualted_read_repeat_count_array, ploidy, proba_cutoff, cov_type)
+    tk.eprint(f'NOTCIE: number of alleles={best_n_components}')
+    final_gmm = GaussianMixture(n_components=best_n_components, covariance_type=cov_type, n_init = 10).fit(simualted_read_repeat_count_array)
     old_read_label_list = list(final_gmm.predict(read_repeat_count_array))
     proba2darray = final_gmm.predict_proba(read_repeat_count_array)
-    old_cluster_mean_list = list(final_gmm.means_)    
+    old_cluster_mean_list = list(final_gmm.means_)
 
     read_label_list, old_label_to_new_label_dict, new_label_to_old_label_dict = sort_label_by_cluster_mean(old_read_label_list, old_cluster_mean_list)
 
@@ -445,21 +523,25 @@ def split_allele_using_gmm(repeat_region, ploidy):
         info = (repeat_count, read_label, max_prob)
         all_info_dict[readname] = info
         each_allele_repeat_count_2d_list[read_label].append(repeat_count)
-        
+    
+    '''
     for read_label in range(0, len(each_allele_repeat_count_2d_list)):
         allele_repeat_count_list = each_allele_repeat_count_2d_list[read_label]
         old_label = new_label_to_old_label_dict[read_label]
         gmm_average_repeat_number = old_cluster_mean_list[old_label]
         std = np.std(allele_repeat_count_list)
+
+        
+        if std < 1: std = 1
         max_repeat_number = gmm_average_repeat_number + 3 * std
         min_repeat_number = gmm_average_repeat_number - 3 * std
-
+        
         for readname in all_info_dict:
             repeat_count, label, max_prob = all_info_dict[readname]
-            if max_prob < proba_cutoff: qc_failed_readname_set.add(readname)
             if label == read_label:
                 if repeat_count > max_repeat_number or repeat_count < min_repeat_number:
                     qc_failed_readname_set.add(readname)
+    '''
 
     qc_passed_each_allele_repeat_count_2d_list = [0] * best_n_components
     for i in range(0, len(qc_passed_each_allele_repeat_count_2d_list)):
@@ -541,7 +623,6 @@ def split_allele_using_gmm(repeat_region, ploidy):
         else:
             confidence = 'HIGH'
         out_detail_fp.write(f'{readname}\t{repeat_count:.1f}\t{allele_id}\t{max_prob:.2f}\t{confidence}\n')
-        #out_detail_fp.write('%s\t%d\t%d\t%f\n' % (readname, repeat_count, allele_id, max_prob))
 
     out_summray_fp.close()
     out_detail_fp.close()
@@ -583,23 +664,29 @@ def chose_best_num_components (read_repeat_count_array, ploidy, proba_cutoff, co
     num_useful_data_points_list = list()
     num_useful_data_points_list.append(0)
     
-    max_num_components = ploidy
+    max_num_components = min(ploidy, len(read_repeat_count_array))
+    if max_num_components < 2:
+        return 1
 
     bic_list = list()
     bic_list.append(0)
+    
+    tk.eprint('NOTICE: Determining number of alleles ')
 
- 
     for n in range(1, max_num_components+1):
         gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init=10).fit(read_repeat_count_array)
         bic = gmm.bic(read_repeat_count_array)
         bic_list.append(bic)
+        tk.eprint(f'NOTICE: n={n}, bic={bic}')
 
     min_bic = 1e99
     min_bic_n_components = 0
+    
     for i in range(1, len(bic_list)):
         if bic_list[i] < min_bic:
             min_bic = bic_list[i]
             min_bic_n_components = i
+            
 
     return min_bic_n_components
 
@@ -756,31 +843,6 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     
     return
 
-class Metainfo:
-    def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
-        self.allele_id = allele_id
-        self.num_reads = num_reads
-        self.predicted_repeat_size = predicted_repeat_size
-        self.min_repeat_size = min_repeat_size
-        self.max_repeat_size = max_repeat_size
-    
-    def init_from_repeat_size_list(self, repeat_size_list, allele_id):
-        
-        self.allele_id = allele_id
-        self.num_reads = len(repeat_size_list)
-        if len(repeat_size_list) == 0:
-            self.predicted_repeat_size = -1
-            self.min_repeat_size = -1 
-            self.max_repeat_size = -1
-            return self
-        
-        self.min_repeat_size = min(repeat_size_list)
-        self.max_repeat_size = max(repeat_size_list)
-        self.predicted_repeat_size = int(np.median(repeat_size_list) + 0.5)
-        return self
-
-    def output(self):
-        return 'allele_id=%d\tnum_reads=%d\tpredicted_repeat_size=%d\tmin_repeat_size=%d\tmax_repeat_size=%d' % (self.allele_id, self.num_reads, self.predicted_repeat_size, self.min_repeat_size, self.max_repeat_size)
 
 def nanoRepeat_bam (input_args, in_bam_file):
     
@@ -793,6 +855,7 @@ def nanoRepeat_bam (input_args, in_bam_file):
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
         quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
+
 
     return
 

@@ -28,6 +28,7 @@ SOFTWARE.
 
 import os
 import sys
+import time
 import argparse
 from argparse import RawTextHelpFormatter
 
@@ -37,16 +38,43 @@ from repeat_region import *
 
 def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
     
-    cmd = f'{minimap2} -ax map-ont -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {bam_prefix}.sam'
-    tk.run_system_cmd(cmd)
+    sam_file        = f'{bam_prefix}.sam'
+    bam_file        = f'{bam_prefix}.bam'
+    sorted_bam_file = f'{bam_prefix}.sorted.bam'
 
-    cmd = f'{samtools} sort -@ {num_cpu} -o {bam_prefix}.sorted.bam {bam_prefix}.sam'
+    if os.path.exists(sam_file):
+        os.remove(sam_file)
+
+    if os.path.exists(bam_file):
+        os.remove(bam_file)
+
+    if os.path.exists(sorted_bam_file):
+        os.remove(sorted_bam_file)
+
+    sleep_time = 5
+
+    cmd = f'{minimap2} -ax map-ont -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file}'
     tk.run_system_cmd(cmd)
+    time.sleep(sleep_time)
+
+    cmd = f'{samtools} view -hb -@ {num_cpu} {sam_file} > {bam_file}'
+    tk.run_system_cmd(cmd)
+    time.sleep(sleep_time)
+
+    if os.path.getsize(bam_file) > 0:
+        os.remove(sam_file)
+
+    cmd = f'{samtools} sort -@ {num_cpu} -o {sorted_bam_file} {bam_file}'
+    tk.run_system_cmd(cmd)
+    time.sleep(sleep_time)
+
+    if os.path.getsize(sorted_bam_file) > 0:
+        os.remove(bam_file)
+
 
     cmd = f'{samtools} index {bam_prefix}.sorted.bam'
     tk.run_system_cmd(cmd)
-
-    os.remove(f'{bam_prefix}.sam')
+    time.sleep(sleep_time)
 
     return f'{bam_prefix}.sorted.bam'
 
@@ -93,6 +121,10 @@ def main():
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
+    if input_args.ploidy < 1:
+        tk.eprint(f'ERROR! ploidy should be at least 1')
+        sys.exit(1)
+
     input_args.input             = os.path.abspath(input_args.input)
     input_args.ref_fasta         = os.path.abspath(input_args.ref_fasta)
     input_args.out_prefix        = os.path.abspath(input_args.out_prefix)
