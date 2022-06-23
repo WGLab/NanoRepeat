@@ -356,7 +356,7 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
 
     round1_paf_file = os.path.join(repeat_region.temp_out_dir, 'round1.paf')
     repeat_region.temp_file_list.append(round1_paf_file)
-    minimap2_parameters = ' -x map-ont -B 9 '
+    minimap2_parameters = ' -x map-ont '
     cmd = f'{minimap2} -c -t {num_cpu} {minimap2_parameters} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
     
     tk.eprint(f'NOTICE: running command: {cmd}')
@@ -835,7 +835,7 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
     repeat_region.temp_file_list.append(round3_paf_file)
 
-    minimap2_parameters = ' -x map-ont -B 9 '
+    minimap2_parameters = ' -x map-ont '
     cmd = f'{minimap2} {minimap2_parameters} -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
