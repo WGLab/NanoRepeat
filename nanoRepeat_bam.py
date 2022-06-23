@@ -392,7 +392,7 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
     if fastq_file_size == 0:
         tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_unique_id()}')
-        #shutil.rmtree(repeat_region.temp_out_dir)
+        shutil.rmtree(repeat_region.temp_out_dir)
         return
 
     # extract ref sequence
@@ -416,7 +416,7 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     split_allele_using_gmm(repeat_region, input_args.ploidy)
     
     tk.eprint('NOTICE: program finished.')
-    #shutil.rmtree(repeat_region.temp_out_dir)
+    shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
