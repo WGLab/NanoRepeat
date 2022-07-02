@@ -481,7 +481,8 @@ def split_allele_using_gmm(repeat_region, ploidy):
 
     simulated_read_repeat_count_list = read_repeat_count_list * 500
     for i in range(0, len(simulated_read_repeat_count_list)):
-        random_error = random.gauss(0, min_std)
+        std = min_std
+        random_error = random.gauss(0, std)
         simulated_read_repeat_count_list[i] = simulated_read_repeat_count_list[i] + random_error
 
     num_data_points = len(simulated_read_repeat_count_list)
