@@ -29,6 +29,7 @@ SOFTWARE.
 
 
 import os
+from re import A
 import sys
 from xmlrpc.client import FastUnmarshaller, Fault
 import numpy as np
@@ -53,9 +54,7 @@ from matplotlib.colors import Normalize
 from matplotlib import cm
 #matplotlib.rcParams['font.sans-serif'] = "Arial"
 matplotlib.rcParams['font.family'] = "sans-serif"
-
-debug = 1
-        
+    
 class Readinfo:
     def __init__(self, readname):
 
@@ -63,9 +62,29 @@ class Readinfo:
         self.label = -1
         self.repeat_size1 = -1
         self.repeat_size2 = -1
-        self.max_prob = 0
-        self.proba_list = list()
-        self.qc_passed = 1
+        self.confidence = 1
+
+class Allele:
+    def __init__(self):
+        self.gmm_mean1 = None
+        self.gmm_mean2 = None
+        self.gmm_sd1 = None
+        self.gmm_sd2 = None
+        self.readname_list = []
+        self.repeat1_size_list = []
+        self.repeat2_size_list = []
+        self.repeat1_median_size = None
+        self.repeat2_median_size = None
+        self.probability_list = []
+        self.num_reads = None
+        self.allele_frequency = None
+        self.confidence_list = []
+
+        self.gmm_min1 = None
+        self.gmm_min2 = None
+        self.gmm_max1 = None
+        self.gmm_max2 = None
+
 
 tab  = '\t' 
 endl = '\n'
@@ -74,19 +93,20 @@ def parse_user_arguments():
 
     parser = argparse.ArgumentParser(description='Joint quantification of two adjacent tandem repeats from long-read amplicon sequencing data ')
     ### required arguments ###
-    parser.add_argument('--in_fq',        required = True,  metavar = 'PATH',   type = str, help = 'input fastq file')
-    parser.add_argument('--ref_fasta',    required = True,  metavar = 'PATH',   type = str, help = 'reference genome sequence in FASTA format')
-    parser.add_argument('--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat, coordinates are 0-based (e.g. chr4:3074876:3074933:CAG:200)')
-    parser.add_argument('--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat, coordinates are 0-based (e.g. chr4:3074946:3074966:CCG:20)')
-    parser.add_argument('--out_dir',      required = True,  metavar = 'PATH',   type = str, help = 'path to the output directory')
-    parser.add_argument('--version',      action='version', version='%(prog)s 0.3.0')
+    parser.add_argument('-i', '--in_fq',        required = True,  metavar = 'PATH',   type = str, help = 'input fastq file')
+    parser.add_argument('-r', '--ref_fasta',    required = True,  metavar = 'PATH',   type = str, help = 'reference genome sequence in FASTA format')
+    parser.add_argument('-1', '--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat, coordinates are 0-based (e.g. chr4:3074876:3074933:CAG:200)')
+    parser.add_argument('-2', '--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat, coordinates are 0-based (e.g. chr4:3074946:3074966:CCG:20)')
+    parser.add_argument('-o', '--out_dir',      required = True,  metavar = 'PATH',   type = str, help = 'path to the output directory')
+    parser.add_argument('-v', '--version',      action='version', version='%(prog)s 0.3.0')
 
     ### optional arguments ### ploidy
-    parser.add_argument('--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads used by minimap2 (default: 1)')
+    parser.add_argument('-c', '--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads used by minimap2 (default: 1)')
     parser.add_argument('--minimap2',     required = False, metavar = 'PATH',   type = str, default = '', help = 'path to minimap2 (default: using environment default)')
     parser.add_argument('--ploidy',       required = False, metavar = 'INT',    type = int, default = 2,  help = 'ploidy of the sample (default: 2)')
     parser.add_argument('--error_rate',   required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'sequencing error rate (default: 0.1)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
+    parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     input_args = parser.parse_args()
 
     if input_args.ploidy < 1:
@@ -166,6 +186,7 @@ def nanoRepeat_joint (input_args):
         sys.exit(1)
 
     in_fastq_prefix = os.path.splitext(os.path.split(input_args.in_fq)[1])[0]
+    out_prefix = os.path.join(input_args.out_dir, in_fastq_prefix)
     temp_out_dir = os.path.join(input_args.out_dir, '%s.NanoRepeat.temp' % in_fastq_prefix)
     tk.create_dir(temp_out_dir)
 
@@ -181,7 +202,9 @@ def nanoRepeat_joint (input_args):
 
     final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, platform, input_args.num_threads, temp_out_dir)
     
-    jointly_split_alleles_using_gmm (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, repeat1, repeat2, final_estimation, input_args.in_fq, input_args.out_dir)
+    read_repeat_joint_count_dict = output_repeat_size_final_estimation (input_args.in_fq, repeat1, repeat2, out_prefix, final_estimation)
+
+    jointly_split_alleles_using_gmm (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, repeat1, repeat2, read_repeat_joint_count_dict, input_args.in_fq, input_args.out_dir)
 
     tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
 
@@ -189,38 +212,46 @@ def nanoRepeat_joint (input_args):
 
     return
 
+def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_prefix, final_estimation):
 
-def output_repeat_size_file(read_repeat_joint_count_dict, readinfo_dict, in_fastq_file, repeat_region_list, repeat_size_file, ploidy):
-
+    repeat_size_file = f'{out_prefix}.repeat_size.txt'
     repeat_size_fp = open(repeat_size_file, 'w')
-    repeat_size_fp.write('##input_fastq=%s\n' % in_fastq_file)
-    repeat_size_fp.write('#readname\t%s\t%s\tallele_id\tprobability\tQC\n' % (repeat_region_list[0].repeat_id, repeat_region_list[1].repeat_id))
-    for readname in read_repeat_joint_count_dict:
-        repeat_size1, repeat_size2 = read_repeat_joint_count_dict[readname]
-        if readname in readinfo_dict:
-            readinfo = readinfo_dict[readname]
-            allele_id = readinfo.label + 1
-            if readinfo.qc_passed:
-                qc = 'PASS'
-            else:
-                qc = 'FAIL'
-            max_prob = readinfo.max_prob
-            repeat_size_fp.write('%s\t%d\t%d\t%d\t%.8f\t%s' % (readname, repeat_size1, repeat_size2, allele_id, max_prob, qc))
-            for prob in readinfo.proba_list:
-                repeat_size_fp.write('\t%.8f' % prob )
-            repeat_size_fp.write('\n')
+    header = f'##input_fastq={in_fastq_file}\n'
+    header += f'#readname\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\n'
+    repeat_size_fp.write(header)
 
+    all_readname_list = []
+    for readname in final_estimation.repeat1_count_dict:
+        all_readname_list.append(readname)
+    for readname in final_estimation.repeat2_count_dict:
+        all_readname_list.append(readname)
+
+    all_readname_set = set(all_readname_list)
+    read_repeat_joint_count_dict = dict()
+    read_repeat_joint_count_list = []
+    for readname in all_readname_set:
+        if readname in final_estimation.repeat1_count_dict: 
+            size1 = final_estimation.repeat1_count_dict[readname]
         else:
-            allele_id = 'N.A.'
-            max_prob = 'N.A.'
-            qc = 'FAIL'
-            repeat_size_fp.write('%s\t%d\t%d\t%s\t%s\t%s' % (readname, repeat_size1, repeat_size2, allele_id, max_prob, qc))
-            for i in range(0, ploidy):
-                repeat_size_fp.write('\tN.A.')
-            repeat_size_fp.write('\n')
+            size1 = 'N.A.'
+
+        if readname in final_estimation.repeat2_count_dict:
+            size2 = final_estimation.repeat2_count_dict[readname]
+        else:
+            size2 = 'N.A.'
+        
+        read_repeat_joint_count_dict[readname] = (size1, size2)
+        tup = (readname, size1, size2)
+        read_repeat_joint_count_list.append(tup)
+    
+    read_repeat_joint_count_list.sort(key = lambda x:x[1])
+    for tup in read_repeat_joint_count_list:
+        readname, size1, size2 = tup
+        repeat_size_fp.write(f'{readname}\t{size1}\t{size2}\n')
     repeat_size_fp.close()
 
-    return
+    tk.eprint(f'NOTIE: Repeat size file is here: {repeat_size_file}')
+    return read_repeat_joint_count_dict
 
 def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, repeat1, repeat2, minimap2, platform, num_threads, out_dir):
 
@@ -663,37 +694,8 @@ def fastq_file_to_dict(in_fastq_file):
 
     return fastq_dict
 
+def remove_outlier_reads(read_repeat_joint_count_dict):
 
-def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, repeat1, repeat2, final_estimation, in_fastq_file, out_dir):
-    
-    in_fastq_prefix  = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    out_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
-    out_fastq_prefix = os.path.join(out_dir, '%s.JointGMM.qc_passed' % (in_fastq_prefix))
-    repeat_size_file = os.path.join(out_dir, '%s.repeat_size.txt' % in_fastq_prefix)
-
-    read_repeat_joint_count_dict = dict()
-    for readname in final_estimation.repeat1_count_dict:
-        if readname not in final_estimation.repeat2_count_dict: continue
-        size1 = final_estimation.repeat1_count_dict[readname]
-        size2 = final_estimation.repeat2_count_dict[readname]
-        read_repeat_joint_count_dict[readname] = (size1, size2)
-
-    repeat_region_list = [repeat1, repeat2]
-
-    if len(read_repeat_joint_count_dict) < ploidy or len(read_repeat_joint_count_dict) == 1:
-        tk.eprint('WARNING: No enough reads! input fastq file is: %s\n' % in_fastq_file)
-        readinfo_dict = dict()
-        output_repeat_size_file(read_repeat_joint_count_dict, readinfo_dict, in_fastq_file, repeat_region_list, repeat_size_file, ploidy)
-        return
-
-    if ploidy < 1:
-        tk.eprint('ploidy must be >= 1 !\n')
-        sys.exit(1)
-
-    proba_cutoff = 0.95
-    #cov_type = 'tied'
-    cov_type = 'diag'
-    dimension = 2
     min_count1, max_count1, min_count2, max_count2  = analysis_outlier_2d(read_repeat_joint_count_dict)
 
     readname_list = list() # readnames after removing outliers
@@ -707,80 +709,122 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rep
         read_repeat_count_list.append(repeat_count1)
         read_repeat_count_list.append(repeat_count2)
 
-    read_repeat_count_array = np.array(read_repeat_count_list).reshape(-1, dimension)
+    return readname_list, read_repeat_count_list
 
+def simulate_reads(read_repeat_count_list, error_rate, dimension):
     min_std = 1.0
     simulated_read_repeat_count_list = read_repeat_count_list * 50
     for i in range(0, len(simulated_read_repeat_count_list)):
         std = min_std + 1.25 * error_rate/3.0 * simulated_read_repeat_count_list[i]
         random_error = random.gauss(0, std)
         simulated_read_repeat_count_list[i] += random_error
+    return np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
 
+def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir):
+    
+    if ploidy < 1:
+        tk.eprint('ploidy must be >= 1 !\n')
+        sys.exit(1)
 
-    simualted_read_repeat_count_array = np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
+    in_fastq_prefix  = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
+    out_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
+    out_fastq_prefix = os.path.join(out_dir, '%s.JointGMM.qc_passed' % (in_fastq_prefix))
 
+    repeat_region_list = [repeat1, repeat2]
+
+    if len(read_repeat_joint_count_dict) < ploidy or len(read_repeat_joint_count_dict) == 1:
+        tk.eprint('WARNING: No enough reads! input fastq file is: %s\n' % in_fastq_file)
+        return
+
+    cov_type = 'diag'
+    dimension = 2
+
+    readname_list, read_repeat_count_list = remove_outlier_reads(read_repeat_joint_count_dict)
+    read_repeat_count_array = np.array(read_repeat_count_list).reshape(-1, dimension)
+    simualted_read_repeat_count_array = simulate_reads(read_repeat_count_list, error_rate, dimension)
+   
     best_n_components, final_gmm = auot_GMM (simualted_read_repeat_count_array, ploidy+2, cov_type, max_mutual_overlap)
     tk.eprint('NOTICE: number of alleles = %d' % best_n_components)
-    old_read_label_list = list(final_gmm.predict(read_repeat_count_array))
+    read_label_list = list(final_gmm.predict(read_repeat_count_array))
     proba2darray = final_gmm.predict_proba(read_repeat_count_array)
+    allele_list = []
+    for i in range(0, best_n_components):
+        allele = Allele()
+        allele.gmm_mean1 = final_gmm.means_[i][0]
+        allele.gmm_mean2 = final_gmm.means_[i][1]
+        allele.gmm_sd1 = math.sqrt(final_gmm.covariances_[i][0])
+        allele.gmm_sd2 = math.sqrt(final_gmm.covariances_[i][1])
+        allele_list.append(allele)
 
-    repeat_region_list[0].is_main = 1
-    main_repeat_idx = 0
-    for i in range(0, len(repeat_region_list)):
-        if repeat_region_list[i].is_main:
-            main_repeat_idx = i
-            break
-
-    old_cluster_mean_list = list()
-    for means in final_gmm.means_:
-        old_cluster_mean_list.append(means[main_repeat_idx])
-
-    read_label_list, old_label_to_new_label_dict, new_label_to_old_label_dict = sort_label_by_cluster_mean(old_read_label_list, old_cluster_mean_list)
-
-    readinfo_dict = dict()
+    assert len(readname_list) == len(read_label_list)
     for i in range(0, len(readname_list)):
         readname = readname_list[i]
-        repeat_count1, repeat_count2 = read_repeat_joint_count_dict[readname]
+        repeat_size1, repeat_size2 = read_repeat_joint_count_dict[readname]
         read_label = read_label_list[i]
-        max_prob = max(proba2darray[i])
-        readinfo = Readinfo(readname)
-        readinfo.label = read_label
-        readinfo.max_prob = max_prob
-        readinfo.proba_list = list(proba2darray[i])
-        readinfo.repeat_size1 = repeat_count1
-        readinfo.repeat_size2 = repeat_count2
-        readinfo_dict[readname] = readinfo
+        probability = proba2darray[i][read_label]
+        allele_list[read_label].readname_list.append(readname)
+        allele_list[read_label].repeat1_size_list.append(repeat_size1)
+        allele_list[read_label].repeat2_size_list.append(repeat_size2)
+        allele_list[read_label].probability_list.append(probability)
+
+
+    probability_cutoff = 0.95
+    for read_label in range(0, len(allele_list)):
+        allele_list[read_label].num_reads = len(allele_list[read_label].readname_list)
+        allele_list[read_label].repeat1_median_size = int(np.median(allele_list[read_label].repeat1_size_list)+0.5)
+        allele_list[read_label].repeat2_median_size = int(np.median(allele_list[read_label].repeat2_size_list)+0.5)
+        allele_list[read_label].gmm_min1 = allele_list[read_label].gmm_mean1 - 2 * allele_list[read_label].gmm_sd1
+        allele_list[read_label].gmm_min2 = allele_list[read_label].gmm_mean2 - 2 * allele_list[read_label].gmm_sd2
+        allele_list[read_label].gmm_max1 = allele_list[read_label].gmm_mean1 + 2 * allele_list[read_label].gmm_sd1
+        allele_list[read_label].gmm_max2 = allele_list[read_label].gmm_mean2 + 2 * allele_list[read_label].gmm_sd2
+        allele_list[read_label].allele_frequency = float(allele_list[read_label].num_reads) / len(readname_list)
+
+    for read_label in range(0, len(allele_list)):
+        allele_list[read_label].confidence_list = []
+        for i in range(0, len(allele_list[read_label].readname_list)):
+            confidence = 'HIGH'
+            if allele_list[read_label].probability_list[i] < probability_cutoff: 
+                confidence = 'LOW'
+            if allele_list[read_label].repeat1_size_list[i] < allele_list[read_label].gmm_min1 or allele_list[read_label].repeat1_size_list[i] > allele_list[read_label].gmm_max1:
+                confidence = 'LOW'
+            if allele_list[read_label].repeat2_size_list[i] < allele_list[read_label].gmm_min2 or allele_list[read_label].repeat2_size_list[i] > allele_list[read_label].gmm_max2:
+                confidence = 'LOW'
+            allele_list[read_label].confidence_list.append(confidence)
     
-    each_allele_repeat_count_3d_list = [0] * best_n_components # each_allele_repeat_count_3d_list[label][repeat_id] = list of repeat size
-    for label in range(0, len(each_allele_repeat_count_3d_list)):
-        each_allele_repeat_count_3d_list[label] = [0] * 2
-        for repeat_id in range(0, 2):
-            each_allele_repeat_count_3d_list[label][repeat_id] = list()
+    if remove_noisy_reads == True and len(allele_list) > ploidy:
+        allele_list.sort(key = lambda allele:allele.num_reads)
+        while len(allele_list) > ploidy:
+            if allele_list[0].num_reads * 2 <= allele_list[1].num_reads:
+                allele_list = allele_list[1:]
+            else:
+                break
+    
+    allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
-    for readname in readinfo_dict:
-        readinfo = readinfo_dict[readname]
-        each_allele_repeat_count_3d_list[readinfo.label][0].append(readinfo.repeat_size1)
-        each_allele_repeat_count_3d_list[readinfo.label][1].append(readinfo.repeat_size2)
+    readinfo_dict = dict()
+    for read_label in range(0, len(allele_list)):
+        for i in range(0, len(allele_list[read_label].readname_list)):
+            readname = allele_list[read_label].readname_list[i]
+            readinfo = Readinfo(readname)
+            readinfo.label = read_label
+            readinfo.repeat_size1 = allele_list[read_label].repeat1_size_list[i]
+            readinfo.repeat_size2 = allele_list[read_label].repeat2_size_list[i]
+            repeat_count1, repeat_count2 = read_repeat_joint_count_dict[readname]
+            assert readinfo.repeat_size1 == repeat_count1
+            assert readinfo.repeat_size2 == repeat_count2
+            readinfo.confidence = allele_list[read_label].confidence_list[i]
+            readinfo_dict[readname] = readinfo
+   
+    score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
 
-    allele_predicted_repeat_size_2d_list = [0] * best_n_components
-    for label in range(0, len(allele_predicted_repeat_size_2d_list)):
-        allele_predicted_repeat_size_2d_list[label] = [0] * 2
-        allele_predicted_repeat_size_2d_list[label][0] = int(np.median(each_allele_repeat_count_3d_list[label][0]) + 0.5)
-        allele_predicted_repeat_size_2d_list[label][1] = int(np.median(each_allele_repeat_count_3d_list[label][1]) + 0.5)
-
-    score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.99)
-    label_qc_failed_reads(readinfo_dict, final_gmm, proba_cutoff, score_cut_off)
-
-    tk.eprint('NOTICE: writing to repeat size file.')
-    output_repeat_size_file(read_repeat_joint_count_dict, readinfo_dict, in_fastq_file, repeat_region_list, repeat_size_file, ploidy)
     tk.eprint('NOTICE: writing to output fastq files.')
     joint_gmm_output_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
 
     tk.eprint('NOTICE: writing to output summary file.')
-    joint_gmm_output_summary_file(in_fastq_file, readinfo_dict, allele_predicted_repeat_size_2d_list, repeat_region_list, out_prefix)
+    joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list, out_prefix)
 
     tk.eprint('NOTICE: plotting figures.')
-    joint_gmm_plot_repeat_counts(readinfo_dict, allele_predicted_repeat_size_2d_list, repeat_region_list, out_prefix)
+    joint_gmm_plot_repeat_counts(readinfo_dict, allele_list, repeat_region_list, out_prefix)
 
     joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix)
 
@@ -887,14 +931,13 @@ def calculate_log_likelyhood_cutoff(gmm, ci):
 
     return log_likelyhood_cutoff
 
-def joint_gmm_plot_repeat_counts(readinfo_dict, allele_predicted_repeat_size_2d_list, repeat_region_list, out_prefix):
+def joint_gmm_plot_repeat_counts(readinfo_dict, allele_list, repeat_region_list, out_prefix):
 
-    
     hist2d_figure_file = out_prefix + '.hist2d.png'
     repeat1_hist_figure_file  = out_prefix + '.%s.hist.png' % (repeat_region_list[0].repeat_id)
     repeat2_hist_figure_file  = out_prefix + '.%s.hist.png' % (repeat_region_list[1].repeat_id)
 
-    num_alleles = len(allele_predicted_repeat_size_2d_list)
+    num_alleles = len(allele_list)
     x_list = list()
     y_list = list()
 
@@ -903,12 +946,13 @@ def joint_gmm_plot_repeat_counts(readinfo_dict, allele_predicted_repeat_size_2d_
     for i in range(0, num_alleles):
         x_2d_list[i] = list()
         y_2d_list[i] = list()
+
     for readname in readinfo_dict:
         readinfo = readinfo_dict[readname]
-        if readinfo.qc_passed == 0: continue
 
         x = readinfo.repeat_size1
         y = readinfo.repeat_size2
+
         x_list.append(x)
         y_list.append(y)
 
@@ -930,11 +974,11 @@ def joint_gmm_plot_repeat_counts(readinfo_dict, allele_predicted_repeat_size_2d_
     else:
         b2 = range(ymin - 1, ymax + 2, int(float(ymax - ymin)/200.0 + 0.5))
     
-    repeat1_predicted_size_list = list()
-    repeat2_predicted_size_list = list()
-    for label in range(0, len(allele_predicted_repeat_size_2d_list)):
-        repeat1_predicted_size_list.append(allele_predicted_repeat_size_2d_list[label][0])
-        repeat2_predicted_size_list.append(allele_predicted_repeat_size_2d_list[label][1])
+    repeat1_predicted_size_list = []
+    repeat2_predicted_size_list = []
+    for label in range(0, len(allele_list)):
+        repeat1_predicted_size_list.append(allele_list[label].repeat1_median_size)
+        repeat2_predicted_size_list.append(allele_list[label].repeat2_median_size)
 
     plot_hist2d(x_list, y_list, b1, b2, repeat_region_list[0].repeat_id, repeat_region_list[1].repeat_id, hist2d_figure_file)
     plot_hist1d(x_2d_list, b1, repeat_region_list[0].repeat_id, repeat1_predicted_size_list, repeat1_hist_figure_file)
@@ -979,44 +1023,44 @@ def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
     plt.ylabel('repeat size (%s)' % repeat_id2)
     xmin = min(x_list)
     xmax = max(x_list)
-
-    if debug:
-        plt.xlim(xmin, xmax)
-        plt.ylim(0, (xmax-xmin)/2)
+    ymin = min(y_list)
+    ymax = max(y_list)
+    
+    if xmax - xmin < 20: 
+        delta = (20 - (xmax - xmin))/2
+        xmin -= delta
+        if xmin < 0: xmin = 0
+        xmax = xmin + 20
+    if ymax - ymin < 20: 
+        delta = (20-(ymax-ymin))/2
+        ymin -= delta
+        if ymin < 0: ymin = 0
+        ymax = ymin + 20
+    plt.xlim(xmin, xmax)
+    plt.ylim(ymin, ymax)
 
     plt.savefig(out_file, dpi=300)
     plt.close('all')
 
     return
 
-def joint_gmm_output_summary_file(in_fastq_file, readinfo_dict, allele_predicted_repeat_size_2d_list, repeat_region_list, out_prefix):
+def joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list, out_prefix):
 
+    num_alleles = len(allele_list)
     out_summray_file = out_prefix + '.summary.txt'
     out_summray_fp = open(out_summray_file, 'w')
-    summary_header = '#input_fastq\tmethod'
-    summary_info = '%s\tJointGMM' % (in_fastq_file)
-
-    # allele_predicted_repeat_size_2d_list[label][repeat_id] = predicted_repeat_size
-    num_alleles = len(allele_predicted_repeat_size_2d_list)
-    summary_header += '\tnum_alleles'
-    summary_info   += '\t%d' % (num_alleles)
-
-    allele_num_reads_list = [0] * num_alleles
-    for readname in readinfo_dict:
-        readinfo = readinfo_dict[readname]
-        if readinfo.qc_passed == 0: continue
-        allele_num_reads_list[readinfo.label] += 1
+    summary_info  = f'Input_fastq:\t{in_fastq_file}\n'
+    summary_info += f'Phasing_Method:\tJointGMM\n'
+    summary_info += f'Num_Alleles:\t{num_alleles}\n'
 
     for label in range(0, num_alleles):
         allele_id = label + 1
-        summary_header += '\tallele%d_num_reads' % (allele_id)
-        summary_info   += '\t%d' % allele_num_reads_list[label]
-        for i in range(0, 2):
-            summary_header += '\t%s_repeat_size%d' % (repeat_region_list[i].repeat_id, allele_id)
-            summary_info   += '\t%d' % (allele_predicted_repeat_size_2d_list[label][i])
+        summary_info += f'Allele{allele_id}_Num_Reads:\t{allele_list[label].num_reads}\n'
+        summary_info += f'Allele{allele_id}_{repeat_region_list[0].repeat_id}.repeat_size:\t{allele_list[label].repeat1_median_size}\n'
+        summary_info += f'Allele{allele_id}_{repeat_region_list[1].repeat_id}.repeat_size:\t{allele_list[label].repeat2_median_size}\n'
 
-    out_summray_fp.write(summary_header + '\n')
-    out_summray_fp.write(summary_info + '\n')
+    out_summray_fp.write(summary_info)
+    out_summray_fp.close()
 
     return
     
@@ -1051,7 +1095,7 @@ def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix
 
         readname = line1.strip().split()[0][1:]
         if readname not in readinfo_dict: continue
-        if readinfo_dict[readname].qc_passed == 0: continue
+        if readinfo_dict[readname].confidence != 'HIGH': continue
     
         label = readinfo_dict[readname].label
         out_allele_fastq_fp_list[label].write(line1 + line2 + line3 + line4)
@@ -1060,26 +1104,6 @@ def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix
 
     for i in range(0, len(out_allele_fastq_fp_list)):
         out_allele_fastq_fp_list[i].close()
-
-    return
-
-
-def label_qc_failed_reads(readinfo_dict, final_gmm, proba_cutoff, score_cut_off):
-
-    for readname in readinfo_dict:
-        readinfo_dict[readname].qc_passed = 1
-        continue
-        readinfo = readinfo_dict[readname]
-        qc_failed = 0
-
-        x = [readinfo.repeat_size1, readinfo.repeat_size2]
-        x = np.array(x).reshape(1, 2)
-        score = final_gmm.score_samples(x)
-        if score[0] < score_cut_off: qc_failed = 1
-
-        if readinfo.max_prob < proba_cutoff: qc_failed = 1
-
-        if qc_failed: readinfo_dict[readname].qc_passed = 0
 
     return
 
@@ -1166,33 +1190,7 @@ def get_outlier_cutoff_from_list(repeat_count_list):
 
     return min_repeat_count_cutoff, max_repeat_count_cutoff
 
-def sort_label_by_cluster_mean(old_read_label_list, cluster_mean_list):
 
-    l = list()
-    for i in range(0, len(cluster_mean_list)):
-        label = i
-        cluster_mean = cluster_mean_list[i]
-        l.append((label, cluster_mean))
-
-    l = sorted(l, key=lambda x:x[1])
-
-    old_label_to_new_label_dict = dict()
-    new_label_to_old_label_dict = dict()
-
-    for i in range(0, len(l)):
-        new_label = i
-        old_label = l[i][0]
-        old_label_to_new_label_dict[old_label] = new_label
-        new_label_to_old_label_dict[new_label] = old_label
-
-    new_read_label_list = list()
-
-    for i in range(0, len(old_read_label_list)):
-        old_label = old_read_label_list[i]
-        new_label = old_label_to_new_label_dict[old_label]
-        new_read_label_list.append(new_label)
-
-    return new_read_label_list, old_label_to_new_label_dict, new_label_to_old_label_dict
 
 
 class Repeat:
