@@ -107,6 +107,8 @@ def parse_user_arguments():
     parser.add_argument('--error_rate',   required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'sequencing error rate (default: 0.1)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
+    parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
+
     input_args = parser.parse_args()
 
     if input_args.ploidy < 1:
@@ -121,6 +123,9 @@ def parse_user_arguments():
         tk.eprint('ERROR! --max_mutual_overlap must be < 1\n')
         sys.exit(1)
 
+    if input_args.max_num_components == -1:
+        input_args.max_num_components = input_args.ploidy + 20
+    
     tk.check_input_file_exists(input_args.in_fq)
     tk.check_input_file_exists(input_args.ref_fasta)
 
@@ -204,7 +209,7 @@ def nanoRepeat_joint (input_args):
     
     read_repeat_joint_count_dict = output_repeat_size_final_estimation (input_args.in_fq, repeat1, repeat2, out_prefix, final_estimation)
 
-    jointly_split_alleles_using_gmm (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, repeat1, repeat2, read_repeat_joint_count_dict, input_args.in_fq, input_args.out_dir)
+    jointly_split_alleles_using_gmm (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, input_args.max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, input_args.in_fq, input_args.out_dir)
 
     tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
 
@@ -247,7 +252,7 @@ def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_pr
     read_repeat_joint_count_list.sort(key = lambda x:x[1])
     for tup in read_repeat_joint_count_list:
         readname, size1, size2 = tup
-        repeat_size_f.write(f'{readname}\t{size1}\t{size2}\n')
+        repeat_size_f.write(f'{readname}\t{size1:.1f}\t{size2:.1f}\n')
     repeat_size_f.close()
 
     tk.eprint(f'NOTICE: Repeat size file is here: {repeat_size_file}')
@@ -720,7 +725,7 @@ def simulate_reads(read_repeat_count_list, error_rate, dimension):
         simulated_read_repeat_count_list[i] += random_error
     return np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
 
-def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir):
+def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir):
     
     if ploidy < 1:
         tk.eprint('ploidy must be >= 1 !\n')
@@ -743,7 +748,7 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
     read_repeat_count_array = np.array(read_repeat_count_list).reshape(-1, dimension)
     simualted_read_repeat_count_array = simulate_reads(read_repeat_count_list, error_rate, dimension)
    
-    best_n_components, final_gmm = auot_GMM (simualted_read_repeat_count_array, ploidy+2, cov_type, max_mutual_overlap)
+    best_n_components, final_gmm = auot_GMM (simualted_read_repeat_count_array, max_num_components, cov_type, max_mutual_overlap)
     tk.eprint('NOTICE: number of alleles = %d' % best_n_components)
     read_label_list = list(final_gmm.predict(read_repeat_count_array))
     proba2darray = final_gmm.predict_proba(read_repeat_count_array)
@@ -792,7 +797,7 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
             allele_list[read_label].confidence_list.append(confidence)
     
     if remove_noisy_reads == True and len(allele_list) > ploidy:
-        return remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, repeat1, repeat2, in_fastq_file, out_dir)
+        return remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir)
         
     allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
@@ -834,7 +839,7 @@ def joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_f
     out_phasing_file = out_prefix + '.phased_reads.txt'
     out_phasing_f = open(out_phasing_file, 'w')
     header  = f'##input_fastq={in_fastq_file}\n'
-    header += f'#readname\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\tallele_ID\tphasing_confidence\n'
+    header += f'#readname\tallele_ID\tphasing_confidence\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\n'
     out_phasing_f.write(header)
     out = ''
     for label in range(0,len(allele_list)):
@@ -845,18 +850,18 @@ def joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_f
             repeat_size1 = allele.repeat1_size_list[i]
             repeat_size2 = allele.repeat2_size_list[i]
             confidence = allele.confidence_list[i]
-            out += f'{readname}\t{repeat_size1}\t{repeat_size2}\t{allele_id}\t{confidence}\n'
+            out += f'{readname}\t{allele_id}\t{confidence}\t{repeat_size1:.1f}\t{repeat_size2:.1f}\n'
     
     out_phasing_f.write(out)
     out_phasing_f.close()
 
     return
 
-def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, repeat1, repeat2, in_fastq_file, out_dir):
+def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir):
     tk.eprint('NOTICE: try to remove noisy reads')
     allele_list.sort(key = lambda allele:allele.num_reads)
     while len(allele_list) > ploidy and len(allele_list) >= 2:
-        if allele_list[0].num_reads * 2 <= allele_list[1].num_reads:
+        if allele_list[0].num_reads * 1.5 <= allele_list[-ploidy].num_reads:
             allele_list.pop(0)
         else:
             break
@@ -870,7 +875,7 @@ def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_ove
             repeat_size2 = allele.repeat2_size_list[i]
             read_repeat_joint_count_dict[readname] = (repeat_size1, repeat_size2)
         
-    return jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, False, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir)
+    return jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, False, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir)
 
 def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix):
 
@@ -1151,11 +1156,8 @@ def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix
 
 
 def auot_GMM(X, max_num_components, cov_type, max_mutual_overlap):
-    for n in range(max_num_components, 0, -1):
+    for n in range(1, max_num_components+1):
         gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init=10).fit(X)
-        if n == 1: 
-            return n, gmm
-        too_close = False
         for i in range(0, n):
             for j in range(i+1, n):
                 component_i_mean1 = gmm.means_[i][0]
@@ -1180,11 +1182,14 @@ def auot_GMM(X, max_num_components, cov_type, max_mutual_overlap):
                 interval_j1 = (norm.isf(a1, component_j_mean1, component_j_sd1), norm.isf(a2, component_j_mean1, component_j_sd1))
                 interval_j2 = (norm.isf(a1, component_j_mean2, component_j_sd2), norm.isf(a2, component_j_mean2, component_j_sd2))
                 if has_overlap(interval_i1, interval_j1) and has_overlap(interval_i2, interval_j2):
-                    too_close = True
-                    break
+                    best_num_components = n - 1
+                    gmm = GaussianMixture(n_components=best_num_components, covariance_type=cov_type, n_init=10).fit(X)
+                    return best_num_components, gmm
 
-        if not too_close:
-            return n, gmm
+    
+    best_num_components = max_num_components
+    gmm = GaussianMixture(n_components=best_num_components, covariance_type=cov_type, n_init=10).fit(X)
+    return best_num_components, gmm
     
 
 def has_overlap(interval1, interval2):
