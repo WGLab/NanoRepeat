@@ -215,10 +215,10 @@ def nanoRepeat_joint (input_args):
 def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_prefix, final_estimation):
 
     repeat_size_file = f'{out_prefix}.repeat_size.txt'
-    repeat_size_fp = open(repeat_size_file, 'w')
+    repeat_size_f = open(repeat_size_file, 'w')
     header = f'##input_fastq={in_fastq_file}\n'
     header += f'#readname\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\n'
-    repeat_size_fp.write(header)
+    repeat_size_f.write(header)
 
     all_readname_list = []
     for readname in final_estimation.repeat1_count_dict:
@@ -247,8 +247,8 @@ def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_pr
     read_repeat_joint_count_list.sort(key = lambda x:x[1])
     for tup in read_repeat_joint_count_list:
         readname, size1, size2 = tup
-        repeat_size_fp.write(f'{readname}\t{size1}\t{size2}\n')
-    repeat_size_fp.close()
+        repeat_size_f.write(f'{readname}\t{size1}\t{size2}\n')
+    repeat_size_f.close()
 
     tk.eprint(f'NOTICE: Repeat size file is here: {repeat_size_file}')
     return read_repeat_joint_count_dict
@@ -331,13 +331,13 @@ def round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fast
 
     preset = tk.get_preset_for_minimap2(platform)
     round3_paf_file =  os.path.join(out_dir, 'round3.paf')
-    round3_paf_fp = open(round3_paf_file, 'w')
-    round3_paf_fp.close()
+    round3_paf_f = open(round3_paf_file, 'w')
+    round3_paf_f.close()
 
     for repeat_count1 in range(min_size1, max_size1):
         for repeat_count2 in range(min_size2, max_size2):
             tmp_fastq_file = os.path.join(out_dir, '%d.%d.round3.fastq' % (repeat_count1, repeat_count2) )
-            tmp_fastq_fp = open(tmp_fastq_file, 'w')
+            tmp_fastq_f = open(tmp_fastq_file, 'w')
             n_tmp_reads = 0
             for readname in fastq_dict:
                 if readname not in round2_estimation.repeat1_count_dict: continue
@@ -351,9 +351,9 @@ def round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fast
                 if repeat_count1 < r1min1 or repeat_count1 >= r1max1: continue
                 if repeat_count2 < r1min2 or repeat_count2 >= r1max2: continue
 
-                tmp_fastq_fp.write(fastq_dict[readname])
+                tmp_fastq_f.write(fastq_dict[readname])
                 n_tmp_reads += 1
-            tmp_fastq_fp.close()
+            tmp_fastq_f.close()
             if n_tmp_reads == 0: 
                 tk.rm(tmp_fastq_file)
                 continue
@@ -413,13 +413,13 @@ def round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chro
 
     preset = tk.get_preset_for_minimap2(platform)
     round2_paf_file =  os.path.join(out_dir, 'round2.paf')
-    round2_paf_fp = open(round2_paf_file, 'w')
-    round2_paf_fp.close()
+    round2_paf_f = open(round2_paf_file, 'w')
+    round2_paf_f.close()
 
     for repeat_count1 in range(repeat1.round1_min_size, repeat1.round1_max_size + 1, step_size1):
         for repeat_count2 in range(repeat2.round1_min_size, repeat2.round1_max_size + 1, step_size2):
             tmp_fastq_file = os.path.join(out_dir, '%d.%d.round2.fastq' % (repeat_count1, repeat_count2) )
-            tmp_fastq_fp = open(tmp_fastq_file, 'w')
+            tmp_fastq_f = open(tmp_fastq_file, 'w')
             n_tmp_reads = 0
             for readname in fastq_dict:
                 if readname not in initial_estimation.repeat1_count_range_dict: continue
@@ -427,9 +427,9 @@ def round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chro
                 min1, max1 = initial_estimation.repeat1_count_range_dict[readname]
                 min2, max2 = initial_estimation.repeat2_count_range_dict[readname]
                 if repeat_count1 >= min1 and repeat_count1 < max1 and repeat_count2 >= min2 and repeat_count2 < max2:                
-                    tmp_fastq_fp.write(fastq_dict[readname])
+                    tmp_fastq_f.write(fastq_dict[readname])
                     n_tmp_reads += 1
-            tmp_fastq_fp.close()
+            tmp_fastq_f.close()
             if n_tmp_reads == 0:
                 tk.rm(tmp_fastq_file)
                 continue
@@ -450,10 +450,10 @@ def estimate_two_repeats_from_paf(in_paf_file, left_anchor_len, mid_anchor_len, 
 
     repeat_size_estimation = RepeatSize()
 
-    in_paf_fp = open(in_paf_file, 'r')
+    in_paf_f = open(in_paf_file, 'r')
     read_align_score_dict = dict()
     while 1:
-        line = in_paf_fp.readline()
+        line = in_paf_f.readline()
         if not line: break
         line = line.strip()
         if not line: continue
@@ -475,7 +475,7 @@ def estimate_two_repeats_from_paf(in_paf_file, left_anchor_len, mid_anchor_len, 
             read_align_score_dict[paf.qname] = list()
         read_align_score_dict[paf.qname].append(tup)    
 
-    in_paf_fp.close()
+    in_paf_f.close()
 
     for readname in read_align_score_dict:
         tup_list = read_align_score_dict[readname]
@@ -520,11 +520,11 @@ def extract_anchor_seq_for_two_repeats (repeat_chrom_seq, repeat1, repeat2, max_
 
 def build_fasta_template_for_two_repeats(left_anchor_seq, mid_anchor_seq, right_anchor_seq, repeat1, repeat2, repeat_count1, repeat_count2, tmp_ref_file):
 
-    tmp_ref_fp = open(tmp_ref_file, 'w')
-    tmp_ref_fp.write('>%d-%d\n' % (repeat_count1, repeat_count2))
+    tmp_ref_f = open(tmp_ref_file, 'w')
+    tmp_ref_f.write('>%d-%d\n' % (repeat_count1, repeat_count2))
     seq = left_anchor_seq + repeat1.repeat_unit * repeat_count1 + mid_anchor_seq + repeat2.repeat_unit * repeat_count2 + right_anchor_seq + '\n'
-    tmp_ref_fp.write(seq)
-    tmp_ref_fp.close()
+    tmp_ref_f.write(seq)
+    tmp_ref_f.close()
 
     return
 
@@ -543,10 +543,10 @@ def initial_estimate_repeat_size(minimap2, repeat_chrom_seq, in_fastq_file, plat
     left_template_name  = 'left_anchor_%d_%d_%s' % (len(left_anchor_seq), repeat1.max_size, repeat1.repeat_unit)
     left_template_seq   = left_anchor_seq + repeat1.repeat_unit * repeat1.max_size
 
-    left_template_fasta_fp = open(left_template_fasta_file, 'w')
-    left_template_fasta_fp.write('>%s\n' % left_template_name)
-    left_template_fasta_fp.write('%s\n' % left_template_seq)
-    left_template_fasta_fp.close()
+    left_template_fasta_f = open(left_template_fasta_file, 'w')
+    left_template_fasta_f.write('>%s\n' % left_template_name)
+    left_template_fasta_f.write('%s\n' % left_template_seq)
+    left_template_fasta_f.close()
 
 
     right_template_fasta_file = os.path.join(out_dir, 'round1_templates.right_anchor.fasta')
@@ -554,10 +554,10 @@ def initial_estimate_repeat_size(minimap2, repeat_chrom_seq, in_fastq_file, plat
     right_template_seq  = repeat2.repeat_unit * repeat2.max_size + right_anchor_seq
     right_template_seq  = tk.rev_comp(right_template_seq)
     
-    right_template_fasta_fp = open(right_template_fasta_file, 'w')
-    right_template_fasta_fp.write('>%s\n' % right_template_name)
-    right_template_fasta_fp.write('%s\n' % right_template_seq)
-    right_template_fasta_fp.close()
+    right_template_fasta_f = open(right_template_fasta_file, 'w')
+    right_template_fasta_f.write('>%s\n' % right_template_name)
+    right_template_fasta_f.write('%s\n' % right_template_seq)
+    right_template_fasta_f.close()
 
     round1_paf_file = os.path.join(out_dir, 'round1.paf')
     round1_left_anchor_paf_file  = os.path.join(out_dir, 'round1.left.paf')
@@ -582,10 +582,10 @@ def initial_estimate_repeat_size(minimap2, repeat_chrom_seq, in_fastq_file, plat
 def round1_estimation_from_paf(round1_paf_file, repeat1, repeat2, left_anchor_len, right_anchor_len):
 
     initial_estimation = Round1Estimation()
-    round1_paf_fp = open(round1_paf_file, 'r')
+    round1_paf_f = open(round1_paf_file, 'r')
     read_paf_list = list()
     while 1:
-        line = round1_paf_fp.readline()
+        line = round1_paf_f.readline()
         if not line: break
         line = line.strip()
         if not line: continue
@@ -600,7 +600,7 @@ def round1_estimation_from_paf(round1_paf_file, repeat1, repeat2, left_anchor_le
             read_paf_list.clear()
             read_paf_list.append(paf)
 
-    round1_paf_fp.close()
+    round1_paf_f.close()
     
     round1_estimation_for1read(read_paf_list, repeat1, repeat2, left_anchor_len, right_anchor_len, initial_estimation)
 
@@ -675,12 +675,12 @@ def fastq_file_to_dict(in_fastq_file):
 
     fastq_dict = dict()
 
-    in_fastq_fp = tk.gzopen(in_fastq_file)
+    in_fastq_f = tk.gzopen(in_fastq_file)
     while 1:
-        line1 = in_fastq_fp.readline()
-        line2 = in_fastq_fp.readline()
-        line3 = in_fastq_fp.readline()
-        line4 = in_fastq_fp.readline()
+        line1 = in_fastq_f.readline()
+        line2 = in_fastq_f.readline()
+        line3 = in_fastq_f.readline()
+        line4 = in_fastq_f.readline()
 
         if not line1: break
         if not line2: break
@@ -690,7 +690,7 @@ def fastq_file_to_dict(in_fastq_file):
         readname = line1.strip().split()[0][1:]
         fastq_dict[readname] = line1 + line2 + line3 + line4
 
-    in_fastq_fp.close()
+    in_fastq_f.close()
 
     return fastq_dict
 
@@ -813,8 +813,7 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
     score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
 
     tk.eprint('NOTICE: writing phasing results.')
-
-    #joint_gmm_output_phasing_results(allele_list, out_prefix)
+    joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_file, out_prefix)
 
     tk.eprint('NOTICE: writing to output fastq files.')
     joint_gmm_output_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
@@ -826,6 +825,30 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
     joint_gmm_plot_repeat_counts(readinfo_dict, allele_list, repeat_region_list, out_prefix)
 
     joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix)
+
+    return
+
+def joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_file, out_prefix):
+
+    repeat1, repeat2 = repeat_region_list
+    out_phasing_file = out_prefix + '.phased_reads.txt'
+    out_phasing_f = open(out_phasing_file, 'w')
+    header  = f'##input_fastq={in_fastq_file}\n'
+    header += f'#readname\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\tallele_ID\tphasing_confidence\n'
+    out_phasing_f.write(header)
+    out = ''
+    for label in range(0,len(allele_list)):
+        allele_id = label + 1
+        allele = allele_list[label]
+        for i in range(0, len(allele.readname_list)):
+            readname = allele.readname_list[i]
+            repeat_size1 = allele.repeat1_size_list[i]
+            repeat_size2 = allele.repeat2_size_list[i]
+            confidence = allele.confidence_list[i]
+            out += f'{readname}\t{repeat_size1}\t{repeat_size2}\t{allele_id}\t{confidence}\n'
+    
+    out_phasing_f.write(out)
+    out_phasing_f.close()
 
     return
 
@@ -1067,7 +1090,7 @@ def joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list
 
     num_alleles = len(allele_list)
     out_summray_file = out_prefix + '.summary.txt'
-    out_summray_fp = open(out_summray_file, 'w')
+    out_summray_f = open(out_summray_file, 'w')
     summary_info  = f'Input_fastq:\t{in_fastq_file}\n'
     summary_info += f'Phasing_Method:\tJointGMM\n'
     summary_info += f'Num_Alleles:\t{num_alleles}\n'
@@ -1078,8 +1101,8 @@ def joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list
         summary_info += f'Allele{allele_id}_{repeat_region_list[0].repeat_id}.repeat_size:\t{allele_list[label].repeat1_median_size}\n'
         summary_info += f'Allele{allele_id}_{repeat_region_list[1].repeat_id}.repeat_size:\t{allele_list[label].repeat2_median_size}\n'
 
-    out_summray_fp.write(summary_info)
-    out_summray_fp.close()
+    out_summray_f.write(summary_info)
+    out_summray_f.close()
 
     return
     
@@ -1091,21 +1114,21 @@ def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix
         out_allele_fastq_file = out_prefix + '.allele%d.fastq' % (allele_id)
         out_allele_fastq_file_list.append(out_allele_fastq_file)
 
-    out_allele_fastq_fp_list = list()
+    out_allele_fastq_f_list = list()
     for i in range(0, len(out_allele_fastq_file_list)):
-        out_allele_fastq_fp = open(out_allele_fastq_file_list[i], 'w')
-        out_allele_fastq_fp_list.append(out_allele_fastq_fp)
+        out_allele_fastq_f = open(out_allele_fastq_file_list[i], 'w')
+        out_allele_fastq_f_list.append(out_allele_fastq_f)
     
     if '.gz' == in_fastq_file[-3:]:
-        in_fastq_fp = gzip.open(in_fastq_file, 'rt')
+        in_fastq_f = gzip.open(in_fastq_file, 'rt')
     else:
-        in_fastq_fp = open(in_fastq_file, 'rt')
+        in_fastq_f = open(in_fastq_file, 'rt')
 
     while 1:
-        line1 = in_fastq_fp.readline()
-        line2 = in_fastq_fp.readline()
-        line3 = in_fastq_fp.readline()
-        line4 = in_fastq_fp.readline()
+        line1 = in_fastq_f.readline()
+        line2 = in_fastq_f.readline()
+        line3 = in_fastq_f.readline()
+        line4 = in_fastq_f.readline()
 
         if not line1: break
         if not line2: break
@@ -1117,12 +1140,12 @@ def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix
         if readinfo_dict[readname].confidence != 'HIGH': continue
     
         label = readinfo_dict[readname].label
-        out_allele_fastq_fp_list[label].write(line1 + line2 + line3 + line4)
+        out_allele_fastq_f_list[label].write(line1 + line2 + line3 + line4)
 
-    in_fastq_fp.close()
+    in_fastq_f.close()
 
-    for i in range(0, len(out_allele_fastq_fp_list)):
-        out_allele_fastq_fp_list[i].close()
+    for i in range(0, len(out_allele_fastq_f_list)):
+        out_allele_fastq_f_list[i].close()
 
     return
 
