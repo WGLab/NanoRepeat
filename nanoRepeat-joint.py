@@ -250,7 +250,7 @@ def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_pr
         repeat_size_fp.write(f'{readname}\t{size1}\t{size2}\n')
     repeat_size_fp.close()
 
-    tk.eprint(f'NOTIE: Repeat size file is here: {repeat_size_file}')
+    tk.eprint(f'NOTICE: Repeat size file is here: {repeat_size_file}')
     return read_repeat_joint_count_dict
 
 def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, repeat1, repeat2, minimap2, platform, num_threads, out_dir):
@@ -792,13 +792,8 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
             allele_list[read_label].confidence_list.append(confidence)
     
     if remove_noisy_reads == True and len(allele_list) > ploidy:
-        allele_list.sort(key = lambda allele:allele.num_reads)
-        while len(allele_list) > ploidy:
-            if allele_list[0].num_reads * 2 <= allele_list[1].num_reads:
-                allele_list = allele_list[1:]
-            else:
-                break
-    
+        return remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, repeat1, repeat2, in_fastq_file, out_dir)
+        
     allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
     readinfo_dict = dict()
@@ -817,6 +812,10 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
    
     score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
 
+    tk.eprint('NOTICE: writing phasing results.')
+
+    #joint_gmm_output_phasing_results(allele_list, out_prefix)
+
     tk.eprint('NOTICE: writing to output fastq files.')
     joint_gmm_output_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
 
@@ -829,6 +828,26 @@ def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, rem
     joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix)
 
     return
+
+def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, repeat1, repeat2, in_fastq_file, out_dir):
+    tk.eprint('NOTICE: try to remove noisy reads')
+    allele_list.sort(key = lambda allele:allele.num_reads)
+    while len(allele_list) > ploidy and len(allele_list) >= 2:
+        if allele_list[0].num_reads * 2 <= allele_list[1].num_reads:
+            allele_list.pop(0)
+        else:
+            break
+
+    read_repeat_joint_count_dict = dict()
+    tk.eprint(f'NOTICE: there are {len(allele_list)} alleles after removing noisy reads')
+    for allele in allele_list:
+        for i in range(0, len(allele.readname_list)):
+            readname = allele.readname_list[i]
+            repeat_size1 = allele.repeat1_size_list[i]
+            repeat_size2 = allele.repeat2_size_list[i]
+            read_repeat_joint_count_dict[readname] = (repeat_size1, repeat_size2)
+        
+    return jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, False, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir)
 
 def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix):
 
