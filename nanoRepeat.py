@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020 Children's Hospital of Philadelphia
-Author: Li Fang (fangli80@foxmail.com)
+Copyright (c) 2020- Children's Hospital of Philadelphia
+Author: Li Fang (fangli2718@gmail.com)
               
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -100,7 +100,7 @@ def main():
     parser.add_argument('-i', '--input', required = True, metavar = 'input_file', type = str, help = '(required) path to input file (supported format: sorted_bam, fastq or fasta)')
     parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
     parser.add_argument('-r', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
-    parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to repeat region file (in bed format)')
+    parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to the repeat region file (tab delimited text file with 4 columns: chrom start end repeat_unit_seq. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive)')
     parser.add_argument('-o', '--out_prefix', required = True, metavar = 'prefix/of/output/files',   type = str, help = '(required) prefix of output files')
     
     # optional 
@@ -109,6 +109,10 @@ def main():
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
     parser.add_argument('--ploidy',   required = False, metavar = 'INT', type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
     parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 256 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
+    parser.add_argument('--error_rate',   required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'sequencing error rate (default: 0.1)')
+    parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
+    parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
+    parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
 
     
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
@@ -124,6 +128,17 @@ def main():
     if input_args.ploidy < 1:
         tk.eprint(f'ERROR! ploidy should be at least 1')
         sys.exit(1)
+
+    if input_args.error_rate >= 1.0:
+        tk.eprint('ERROR! --error_rate must be < 1\n')
+        sys.exit(1)
+    
+    if input_args.max_mutual_overlap >= 1.0:
+        tk.eprint('ERROR! --max_mutual_overlap must be < 1\n')
+        sys.exit(1)
+
+    if input_args.max_num_components == -1:
+        input_args.max_num_components = input_args.ploidy + 20
 
     input_args.input             = os.path.abspath(input_args.input)
     input_args.ref_fasta         = os.path.abspath(input_args.ref_fasta)

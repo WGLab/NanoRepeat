@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020 Children's Hospital of Philadelphia
+Copyright (c) 2020- Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
 
 Permission is hereby granted, free of charge, to any person obtaining

@@ -2,7 +2,7 @@
 
 
 '''
-Copyright (c) 2020 Children's Hospital of Philadelphia
+Copyright (c) 2020- Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
               
 Permission is hereby granted, free of charge, to any person obtaining
@@ -29,65 +29,69 @@ SOFTWARE.
 
 
 import os
-from re import A
 import sys
-from xmlrpc.client import FastUnmarshaller, Fault
+from typing import final
 import numpy as np
-import gzip
+
 import argparse
 import shutil
-import random
-import math
-from scipy.stats import norm
+
 
 
 import tk
 from paf import *
+from split_alleles import *
 
-from sklearn.mixture import GaussianMixture
-
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
-from matplotlib import cm
-#matplotlib.rcParams['font.sans-serif'] = "Arial"
-matplotlib.rcParams['font.family'] = "sans-serif"
-    
-class Readinfo:
-    def __init__(self, readname):
-
-        self.readname = readname
-        self.label = -1
-        self.repeat_size1 = -1
-        self.repeat_size2 = -1
-        self.confidence = 1
-
-class Allele:
+class Repeat:
     def __init__(self):
-        self.gmm_mean1 = None
-        self.gmm_mean2 = None
-        self.gmm_sd1 = None
-        self.gmm_sd2 = None
-        self.readname_list = []
-        self.repeat1_size_list = []
-        self.repeat2_size_list = []
-        self.repeat1_median_size = None
-        self.repeat2_median_size = None
-        self.probability_list = []
-        self.num_reads = None
-        self.allele_frequency = None
-        self.confidence_list = []
+        self.repeat_id = ''
+        self.chrom = ''
+        self.start = -1
+        self.end = -1
+        self.repeat_unit = ''
+        self.repeat_unit_size = 0
+        self.min_size = 0
+        self.max_size = 1000
+        self.round1_min_size = 0
+        self.round1_max_size = 1000
+        self.is_main = 0
+    
+    def init_from_string(self, string):
+        col_list = string.split(':')
+        if len(col_list) != 5:
+            tk.eprint('ERROR! --repeat1 and --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074876:3074933:CAG:200).')
+            sys.exit(1)
+        
+        self.chrom, self.start, self.end, self.repeat_unit, self.max_size = col_list
+        self.start = int(self.start)
+        self.end   = int(self.end)
+        self.repeat_unit_size = len(self.repeat_unit)
+        self.min_size = 0
+        self.max_size = int(self.max_size)
+        self.repeat_id = '-'.join(col_list[0:4])
+        return self
 
-        self.gmm_min1 = None
-        self.gmm_min2 = None
-        self.gmm_max1 = None
-        self.gmm_max2 = None
+class Round1Estimation:
+    def __init__(self):
+        self.repeat1_count_range_dict = dict()
+        self.repeat2_count_range_dict = dict()
+        self.potential_repeat_region_dict = dict()
+        self.bad_reads_set = set()
+    
+    def output_repeat2_boundaries(self):
+        out_string = ''
+        for readname in self.repeat2_count_range_dict:
+            lower_bound, upper_bound = self.repeat2_count_range_dict[readname]
+            out_string += f'{readname}\t{lower_bound}\t{upper_bound}\n'
 
+        return out_string
 
-tab  = '\t' 
-endl = '\n'
+class RepeatSize:
+    def __init__(self):
+        self.repeat1_count_dict = dict()
+        self.repeat2_count_dict = dict()
+        self.step_size1 = 1
+        self.step_size2 = 1
 
 def parse_user_arguments():
 
@@ -95,8 +99,8 @@ def parse_user_arguments():
     ### required arguments ###
     parser.add_argument('-i', '--in_fq',        required = True,  metavar = 'PATH',   type = str, help = 'input fastq file')
     parser.add_argument('-r', '--ref_fasta',    required = True,  metavar = 'PATH',   type = str, help = 'reference genome sequence in FASTA format')
-    parser.add_argument('-1', '--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat, coordinates are 0-based (e.g. chr4:3074876:3074933:CAG:200)')
-    parser.add_argument('-2', '--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat, coordinates are 0-based (e.g. chr4:3074946:3074966:CCG:20)')
+    parser.add_argument('-1', '--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074876:3074933:CAG:200)')
+    parser.add_argument('-2', '--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074946:3074966:CCG:20)')
     parser.add_argument('-o', '--out_dir',      required = True,  metavar = 'PATH',   type = str, help = 'path to the output directory')
     parser.add_argument('-v', '--version',      action='version', version='%(prog)s 0.3.0')
 
@@ -109,7 +113,11 @@ def parse_user_arguments():
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
 
-    input_args = parser.parse_args()
+
+    if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
+        input_args = parser.parse_args(['--help'])
+    else:
+        input_args = parser.parse_args()
 
     if input_args.ploidy < 1:
         tk.eprint('ERROR: --ploidy must be >= 1 !\n')
@@ -207,56 +215,17 @@ def nanoRepeat_joint (input_args):
 
     final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, platform, input_args.num_threads, temp_out_dir)
     
-    read_repeat_joint_count_dict = output_repeat_size_final_estimation (input_args.in_fq, repeat1, repeat2, out_prefix, final_estimation)
+    read_repeat_joint_count_dict = output_repeat_size_2d (input_args.in_fq, repeat1.repeat_id, repeat2.repeat_id, out_prefix, final_estimation.repeat1_count_dict, final_estimation.repeat2_count_dict)
 
-    jointly_split_alleles_using_gmm (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, input_args.max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, input_args.in_fq, input_args.out_dir)
-
-    tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
+    tk.eprint('NOTICE: phasing reads using GMM')
+    num_removed_reads = 0
+    split_alleles_using_gmm_2d (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, input_args.max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, input_args.in_fq, input_args.out_dir)
 
     shutil.rmtree(temp_out_dir)
+    tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
 
     return
 
-def output_repeat_size_final_estimation (in_fastq_file, repeat1, repeat2, out_prefix, final_estimation):
-
-    repeat_size_file = f'{out_prefix}.repeat_size.txt'
-    repeat_size_f = open(repeat_size_file, 'w')
-    header = f'##input_fastq={in_fastq_file}\n'
-    header += f'#readname\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\n'
-    repeat_size_f.write(header)
-
-    all_readname_list = []
-    for readname in final_estimation.repeat1_count_dict:
-        all_readname_list.append(readname)
-    for readname in final_estimation.repeat2_count_dict:
-        all_readname_list.append(readname)
-
-    all_readname_set = set(all_readname_list)
-    read_repeat_joint_count_dict = dict()
-    read_repeat_joint_count_list = []
-    for readname in all_readname_set:
-        if readname in final_estimation.repeat1_count_dict: 
-            size1 = final_estimation.repeat1_count_dict[readname]
-        else:
-            size1 = 'N.A.'
-
-        if readname in final_estimation.repeat2_count_dict:
-            size2 = final_estimation.repeat2_count_dict[readname]
-        else:
-            size2 = 'N.A.'
-        
-        read_repeat_joint_count_dict[readname] = (size1, size2)
-        tup = (readname, size1, size2)
-        read_repeat_joint_count_list.append(tup)
-    
-    read_repeat_joint_count_list.sort(key = lambda x:x[1])
-    for tup in read_repeat_joint_count_list:
-        readname, size1, size2 = tup
-        repeat_size_f.write(f'{readname}\t{size1:.1f}\t{size2:.1f}\n')
-    repeat_size_f.close()
-
-    tk.eprint(f'NOTICE: Repeat size file is here: {repeat_size_file}')
-    return read_repeat_joint_count_dict
 
 def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, repeat1, repeat2, minimap2, platform, num_threads, out_dir):
 
@@ -699,169 +668,13 @@ def fastq_file_to_dict(in_fastq_file):
 
     return fastq_dict
 
-def remove_outlier_reads(read_repeat_joint_count_dict):
-
-    min_count1, max_count1, min_count2, max_count2  = analysis_outlier_2d(read_repeat_joint_count_dict)
-
-    readname_list = list() # readnames after removing outliers
-    read_repeat_count_list = list()
-
-    for readname in read_repeat_joint_count_dict:
-        repeat_count1, repeat_count2 = read_repeat_joint_count_dict[readname]
-        if repeat_count1 < min_count1 or repeat_count1 > max_count1: continue 
-        if repeat_count2 < min_count2 or repeat_count2 > max_count2: continue 
-        readname_list.append(readname)
-        read_repeat_count_list.append(repeat_count1)
-        read_repeat_count_list.append(repeat_count2)
-
-    return readname_list, read_repeat_count_list
-
-def simulate_reads(read_repeat_count_list, error_rate, dimension):
-    min_std = 1.0
-    simulated_read_repeat_count_list = read_repeat_count_list * 50
-    for i in range(0, len(simulated_read_repeat_count_list)):
-        std = min_std + 1.25 * error_rate/3.0 * simulated_read_repeat_count_list[i]
-        random_error = random.gauss(0, std)
-        simulated_read_repeat_count_list[i] += random_error
-    return np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
-
-def jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir):
-    
-    if ploidy < 1:
-        tk.eprint('ploidy must be >= 1 !\n')
-        sys.exit(1)
-
-    in_fastq_prefix  = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    out_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
-    out_fastq_prefix = os.path.join(out_dir, '%s.JointGMM.qc_passed' % (in_fastq_prefix))
-
-    repeat_region_list = [repeat1, repeat2]
-
-    if len(read_repeat_joint_count_dict) < ploidy or len(read_repeat_joint_count_dict) == 1:
-        tk.eprint('WARNING: No enough reads! input fastq file is: %s\n' % in_fastq_file)
-        return
-
-    cov_type = 'diag'
-    dimension = 2
-
-    readname_list, read_repeat_count_list = remove_outlier_reads(read_repeat_joint_count_dict)
-    read_repeat_count_array = np.array(read_repeat_count_list).reshape(-1, dimension)
-    simualted_read_repeat_count_array = simulate_reads(read_repeat_count_list, error_rate, dimension)
-   
-    best_n_components, final_gmm = auot_GMM (simualted_read_repeat_count_array, max_num_components, cov_type, max_mutual_overlap)
-    tk.eprint('NOTICE: number of alleles = %d' % best_n_components)
-    read_label_list = list(final_gmm.predict(read_repeat_count_array))
-    proba2darray = final_gmm.predict_proba(read_repeat_count_array)
-    allele_list = []
-    for i in range(0, best_n_components):
-        allele = Allele()
-        allele.gmm_mean1 = final_gmm.means_[i][0]
-        allele.gmm_mean2 = final_gmm.means_[i][1]
-        allele.gmm_sd1 = math.sqrt(final_gmm.covariances_[i][0])
-        allele.gmm_sd2 = math.sqrt(final_gmm.covariances_[i][1])
-        allele_list.append(allele)
-
-    assert len(readname_list) == len(read_label_list)
-    for i in range(0, len(readname_list)):
-        readname = readname_list[i]
-        repeat_size1, repeat_size2 = read_repeat_joint_count_dict[readname]
-        read_label = read_label_list[i]
-        probability = proba2darray[i][read_label]
-        allele_list[read_label].readname_list.append(readname)
-        allele_list[read_label].repeat1_size_list.append(repeat_size1)
-        allele_list[read_label].repeat2_size_list.append(repeat_size2)
-        allele_list[read_label].probability_list.append(probability)
-
-
-    probability_cutoff = 0.95
-    for read_label in range(0, len(allele_list)):
-        allele_list[read_label].num_reads = len(allele_list[read_label].readname_list)
-        allele_list[read_label].repeat1_median_size = int(np.median(allele_list[read_label].repeat1_size_list)+0.5)
-        allele_list[read_label].repeat2_median_size = int(np.median(allele_list[read_label].repeat2_size_list)+0.5)
-        allele_list[read_label].gmm_min1 = allele_list[read_label].gmm_mean1 - 2 * allele_list[read_label].gmm_sd1
-        allele_list[read_label].gmm_min2 = allele_list[read_label].gmm_mean2 - 2 * allele_list[read_label].gmm_sd2
-        allele_list[read_label].gmm_max1 = allele_list[read_label].gmm_mean1 + 2 * allele_list[read_label].gmm_sd1
-        allele_list[read_label].gmm_max2 = allele_list[read_label].gmm_mean2 + 2 * allele_list[read_label].gmm_sd2
-        allele_list[read_label].allele_frequency = float(allele_list[read_label].num_reads) / len(readname_list)
-
-    for read_label in range(0, len(allele_list)):
-        allele_list[read_label].confidence_list = []
-        for i in range(0, len(allele_list[read_label].readname_list)):
-            confidence = 'HIGH'
-            if allele_list[read_label].probability_list[i] < probability_cutoff: 
-                confidence = 'LOW'
-            if allele_list[read_label].repeat1_size_list[i] < allele_list[read_label].gmm_min1 or allele_list[read_label].repeat1_size_list[i] > allele_list[read_label].gmm_max1:
-                confidence = 'LOW'
-            if allele_list[read_label].repeat2_size_list[i] < allele_list[read_label].gmm_min2 or allele_list[read_label].repeat2_size_list[i] > allele_list[read_label].gmm_max2:
-                confidence = 'LOW'
-            allele_list[read_label].confidence_list.append(confidence)
-    
-    if remove_noisy_reads == True and len(allele_list) > ploidy:
-        return remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir)
-        
-    allele_list.sort(key = lambda allele:allele.gmm_mean1)
-
-    readinfo_dict = dict()
-    for read_label in range(0, len(allele_list)):
-        for i in range(0, len(allele_list[read_label].readname_list)):
-            readname = allele_list[read_label].readname_list[i]
-            readinfo = Readinfo(readname)
-            readinfo.label = read_label
-            readinfo.repeat_size1 = allele_list[read_label].repeat1_size_list[i]
-            readinfo.repeat_size2 = allele_list[read_label].repeat2_size_list[i]
-            repeat_count1, repeat_count2 = read_repeat_joint_count_dict[readname]
-            assert readinfo.repeat_size1 == repeat_count1
-            assert readinfo.repeat_size2 == repeat_count2
-            readinfo.confidence = allele_list[read_label].confidence_list[i]
-            readinfo_dict[readname] = readinfo
-   
-    score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
-
-    tk.eprint('NOTICE: writing phasing results.')
-    joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_file, out_prefix)
-
-    tk.eprint('NOTICE: writing to output fastq files.')
-    joint_gmm_output_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
-
-    tk.eprint('NOTICE: writing to output summary file.')
-    joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list, out_prefix)
-
-    tk.eprint('NOTICE: plotting figures.')
-    joint_gmm_plot_repeat_counts(readinfo_dict, allele_list, repeat_region_list, out_prefix)
-
-    joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix)
-
-    return
-
-def joint_gmm_output_phasing_results(allele_list, repeat_region_list, in_fastq_file, out_prefix):
-
-    repeat1, repeat2 = repeat_region_list
-    out_phasing_file = out_prefix + '.phased_reads.txt'
-    out_phasing_f = open(out_phasing_file, 'w')
-    header  = f'##input_fastq={in_fastq_file}\n'
-    header += f'#readname\tallele_ID\tphasing_confidence\t{repeat1.repeat_id}.repeat_size\t{repeat2.repeat_id}.repeat_size\n'
-    out_phasing_f.write(header)
-    out = ''
-    for label in range(0,len(allele_list)):
-        allele_id = label + 1
-        allele = allele_list[label]
-        for i in range(0, len(allele.readname_list)):
-            readname = allele.readname_list[i]
-            repeat_size1 = allele.repeat1_size_list[i]
-            repeat_size2 = allele.repeat2_size_list[i]
-            confidence = allele.confidence_list[i]
-            out += f'{readname}\t{allele_id}\t{confidence}\t{repeat_size1:.1f}\t{repeat_size2:.1f}\n'
-    
-    out_phasing_f.write(out)
-    out_phasing_f.close()
-
-    return
-
-def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir):
+def remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir):
     tk.eprint('NOTICE: try to remove noisy reads')
     allele_list.sort(key = lambda allele:allele.num_reads)
+    num_removed_reads = 0
     while len(allele_list) > ploidy and len(allele_list) >= 2:
         if allele_list[0].num_reads * 1.5 <= allele_list[-ploidy].num_reads:
+            num_removed_reads += allele_list[0].num_reads
             allele_list.pop(0)
         else:
             break
@@ -874,95 +687,65 @@ def remove_noisy_reads_and_rerun(allele_list, ploidy, error_rate, max_mutual_ove
             repeat_size1 = allele.repeat1_size_list[i]
             repeat_size2 = allele.repeat2_size_list[i]
             read_repeat_joint_count_dict[readname] = (repeat_size1, repeat_size2)
-        
-    return jointly_split_alleles_using_gmm (ploidy, error_rate, max_mutual_overlap, False, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, in_fastq_file, out_dir)
-
-def joint_gmm_scatter_plot_with_contour (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat_region_list, out_prefix):
-
-    scatter_plot_file = out_prefix + '.scatter.png'
-
-    xlabel = '%s repeat size' % (repeat_region_list[0].repeat_id)
-    ylabel = '%s repeat size' % (repeat_region_list[1].repeat_id)
-
-    X = list()
-    Y = list()
     
-    for readname in read_repeat_joint_count_dict:
-        x, y = read_repeat_joint_count_dict[readname]
-        X.append(x)
-        Y.append(y)
+    remove_noisy_reads = False
+    return split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_dir)
 
-    X = np.array(X)
-    Y = np.array(Y)
 
-    X, Y, Z= countxy(X, Y)
-    fig, ax = plt.subplots()
-    fig.set_size_inches(6, 4)
-
-    try:
-        ax.scatter(X, Y, c=Z, s=15, edgecolor='')
-    except:
-        ax.scatter(X, Y, c=Z, s=15, edgecolor=['none'])
-
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-
-    norm = Normalize(vmin = np.min(Z), vmax = np.max(Z))
-    cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
-    cbar.ax.set_ylabel('Count')
+def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_dir):
     
-    xmin = min(X)
-    xmax = max(X)
-    ymin = min(Y)
-    ymax = max(Y)
+    if ploidy < 1:
+        tk.eprint('ploidy must be >= 1 !\n')
+        sys.exit(1)
 
-    figure_max_x = int(((xmax * 1.4)/10.0 +1 )* 10)
-    figure_max_y = int(((ymax * 1.4)/10.0 +1 )* 10)
+    if len(read_repeat_joint_count_dict) < ploidy or len(read_repeat_joint_count_dict) == 1:
+        tk.eprint('WARNING: No enough reads! input fastq file is: %s\n' % in_fastq_file)
+        return
 
-    figure_min_x = int(((xmin / 1.4)/10.0 -1 )* 10)
-    figure_min_y = int(((ymin / 1.4)/10.0 -1 )* 10)
+    in_fastq_prefix  = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
+    out_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
+    out_fastq_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
 
-    if figure_min_x < 10: figure_min_x = 0
-    if figure_min_y < 10: figure_min_y = 0
+    cov_type = 'diag'
+    dimension = 2
+    probability_cutoff = 0.95
 
-    plt.xlim(figure_min_x, figure_max_x)
-    plt.ylim(figure_min_y, figure_max_y)
+    readname_list, read_repeat_count_list = remove_outlier_reads_2d(read_repeat_joint_count_dict)
+    read_repeat_count_array = np.array(read_repeat_count_list).reshape(-1, dimension)
+    simulated_read_repeat_count_list = simulate_reads(read_repeat_count_list, error_rate)
+    simualted_read_repeat_count_array = np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
 
-    a = np.linspace(figure_min_x, figure_max_x, 400)
-    b = np.linspace(figure_min_y, figure_max_y, 400)
+    best_n_components, final_gmm = auto_GMM_2d (simualted_read_repeat_count_array, max_num_components, cov_type, max_mutual_overlap)
+    tk.eprint('NOTICE: number of alleles = %d' % best_n_components)
+    
+    allele_list = create_allele_list_2d(best_n_components, final_gmm, readname_list, read_repeat_count_array, read_repeat_joint_count_dict, probability_cutoff)
+    
+    num_removed_reads = 0
+    if remove_noisy_reads == True and len(allele_list) > ploidy:
+        return remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir)
+    
+    allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
-    A, B = np.meshgrid(a, b)
-    AA = np.array([A.ravel(), B.ravel()]).T
-    C = final_gmm.score_samples(AA)
-    C = C.reshape(A.shape)
+    readinfo_dict = create_readinfo_dict_from_allele_list(allele_list, dimension)
 
-    CS = plt.contour(A, B, C, levels=[score_cut_off], linestyles = 'dashed', colors = 'grey')
+    score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
 
-    plt.savefig(scatter_plot_file, dpi = 300)
-    plt.close('all')
+    tk.eprint('NOTICE: writing phasing results...')
+    output_phasing_results_2d(allele_list, repeat1.repeat_id, repeat2.repeat_id, in_fastq_file, out_prefix)
+
+    tk.eprint('NOTICE: writing to output fastq files...')
+    output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
+
+    tk.eprint('NOTICE: writing summary file...')
+    output_summary_file_2d(in_fastq_file, allele_list, repeat1.repeat_id, repeat2.repeat_id, num_removed_reads, out_prefix)
+
+    tk.eprint('NOTICE: plotting figures...')
+    plot_repeat_counts_2d(readinfo_dict, allele_list, repeat1.repeat_id, repeat2.repeat_id, out_prefix)
+
+    scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat1.repeat_id, repeat2.repeat_id, out_prefix)
+
     return
 
-def countxy(x, y):
-    count_dict = dict()
-    for i in range(0, len(x)):
-        key = '%d\t%d' % (x[i], y[i])
-        if key not in count_dict:
-            count_dict[key] = 1
-        else:
-            count_dict[key] += 1
-    x_list = list()
-    y_list = list()
-    z_list = list()
-    for key in count_dict:
-        x, y = key.split('\t')
-        x = int(x)
-        y = int(y)
-        z = count_dict[key]
-        x_list.append(x)
-        y_list.append(y)
-        z_list.append(z)
-    
-    return x_list, y_list, z_list
 
 def calculate_log_likelyhood_cutoff(gmm, ci):
     X, labels = gmm.sample(100000)
@@ -977,320 +760,6 @@ def calculate_log_likelyhood_cutoff(gmm, ci):
     log_likelyhood_cutoff = X_score_list[cut_off_idx][1]
 
     return log_likelyhood_cutoff
-
-def joint_gmm_plot_repeat_counts(readinfo_dict, allele_list, repeat_region_list, out_prefix):
-
-    hist2d_figure_file = out_prefix + '.hist2d.png'
-    repeat1_hist_figure_file  = out_prefix + '.%s.hist.png' % (repeat_region_list[0].repeat_id)
-    repeat2_hist_figure_file  = out_prefix + '.%s.hist.png' % (repeat_region_list[1].repeat_id)
-
-    num_alleles = len(allele_list)
-    x_list = list()
-    y_list = list()
-
-    x_2d_list = [0] * num_alleles
-    y_2d_list = [0] * num_alleles
-    for i in range(0, num_alleles):
-        x_2d_list[i] = list()
-        y_2d_list[i] = list()
-
-    for readname in readinfo_dict:
-        readinfo = readinfo_dict[readname]
-
-        x = readinfo.repeat_size1
-        y = readinfo.repeat_size2
-
-        x_list.append(x)
-        y_list.append(y)
-
-        x_2d_list[readinfo.label].append(x)
-        y_2d_list[readinfo.label].append(y)
-
-    xmin = int(min(x_list))
-    xmax = int(max(x_list))+1
-    ymin = int(min(y_list))
-    ymax = int(max(y_list))+1
-
-    if xmax - xmin <= 200:
-        b1 = range(xmin - 1, xmax + 2)
-    else:
-        b1 = range(xmin - 1, xmax + 2, int(float(xmax - xmin)/200.0 + 0.5))
-
-    if ymax - ymin <= 200:
-        b2 = range(ymin - 1, ymax + 2)
-    else:
-        b2 = range(ymin - 1, ymax + 2, int(float(ymax - ymin)/200.0 + 0.5))
-    
-    repeat1_predicted_size_list = []
-    repeat2_predicted_size_list = []
-    for label in range(0, len(allele_list)):
-        repeat1_predicted_size_list.append(allele_list[label].repeat1_median_size)
-        repeat2_predicted_size_list.append(allele_list[label].repeat2_median_size)
-
-    plot_hist2d(x_list, y_list, b1, b2, repeat_region_list[0].repeat_id, repeat_region_list[1].repeat_id, hist2d_figure_file)
-    plot_hist1d(x_2d_list, b1, repeat_region_list[0].repeat_id, repeat1_predicted_size_list, repeat1_hist_figure_file)
-    plot_hist1d(y_2d_list, b2, repeat_region_list[1].repeat_id, repeat2_predicted_size_list, repeat2_hist_figure_file)
-
-    return 
-
-def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, out_file):
-
-    plt.figure (figsize=(6, 4))
-    
-    max_x = 0
-    for x in x_2d_list:
-        if len(x) == 0: continue
-        plt.hist(x, bins = b)
-        if max_x < max(x):
-            max_x = max(x)
-
-    for repeat_size in predicted_size_list:
-        plt.axvline(x=repeat_size+0.5, color = 'grey', linestyle = ':')
-
-
-    plt.title('Repeat size distribution (%s)' % repeat_id)
-    plt.xlabel('repeat size')
-    plt.ylabel('number of reads')
-    
-    max_x = int(((max_x * 1.618)/5.0 +1 )* 5)
-    plt.xlim(0, max_x)
-
-    plt.savefig(out_file, dpi=300)
-    plt.close('all')
-
-    return
-
-def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
-
-    plt.figure (figsize=(8, 4))
-    plt.hist2d (x_list, y_list, [b1, b2], cmap = 'binary')
-    plt.colorbar()
-    plt.title('2D histogram of repeat size')
-    plt.xlabel('repeat size (%s)' % repeat_id1)
-    plt.ylabel('repeat size (%s)' % repeat_id2)
-    xmin = min(x_list)
-    xmax = max(x_list)
-    ymin = min(y_list)
-    ymax = max(y_list)
-    
-    if xmax - xmin < 20: 
-        delta = (20 - (xmax - xmin))/2
-        xmin -= delta
-        if xmin < 0: xmin = 0
-        xmax = xmin + 20
-    if ymax - ymin < 20: 
-        delta = (20-(ymax-ymin))/2
-        ymin -= delta
-        if ymin < 0: ymin = 0
-        ymax = ymin + 20
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-
-    plt.savefig(out_file, dpi=300)
-    plt.close('all')
-
-    return
-
-def joint_gmm_output_summary_file(in_fastq_file, allele_list, repeat_region_list, out_prefix):
-
-    num_alleles = len(allele_list)
-    out_summray_file = out_prefix + '.summary.txt'
-    out_summray_f = open(out_summray_file, 'w')
-    summary_info  = f'Input_fastq:\t{in_fastq_file}\n'
-    summary_info += f'Phasing_Method:\tJointGMM\n'
-    summary_info += f'Num_Alleles:\t{num_alleles}\n'
-
-    for label in range(0, num_alleles):
-        allele_id = label + 1
-        summary_info += f'Allele{allele_id}_Num_Reads:\t{allele_list[label].num_reads}\n'
-        summary_info += f'Allele{allele_id}_{repeat_region_list[0].repeat_id}.repeat_size:\t{allele_list[label].repeat1_median_size}\n'
-        summary_info += f'Allele{allele_id}_{repeat_region_list[1].repeat_id}.repeat_size:\t{allele_list[label].repeat2_median_size}\n'
-
-    out_summray_f.write(summary_info)
-    out_summray_f.close()
-
-    return
-    
-def joint_gmm_output_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix):
-
-    out_allele_fastq_file_list = list()
-    for label in range(0, num_alleles):
-        allele_id = label + 1
-        out_allele_fastq_file = out_prefix + '.allele%d.fastq' % (allele_id)
-        out_allele_fastq_file_list.append(out_allele_fastq_file)
-
-    out_allele_fastq_f_list = list()
-    for i in range(0, len(out_allele_fastq_file_list)):
-        out_allele_fastq_f = open(out_allele_fastq_file_list[i], 'w')
-        out_allele_fastq_f_list.append(out_allele_fastq_f)
-    
-    if '.gz' == in_fastq_file[-3:]:
-        in_fastq_f = gzip.open(in_fastq_file, 'rt')
-    else:
-        in_fastq_f = open(in_fastq_file, 'rt')
-
-    while 1:
-        line1 = in_fastq_f.readline()
-        line2 = in_fastq_f.readline()
-        line3 = in_fastq_f.readline()
-        line4 = in_fastq_f.readline()
-
-        if not line1: break
-        if not line2: break
-        if not line3: break
-        if not line4: break
-
-        readname = line1.strip().split()[0][1:]
-        if readname not in readinfo_dict: continue
-        if readinfo_dict[readname].confidence != 'HIGH': continue
-    
-        label = readinfo_dict[readname].label
-        out_allele_fastq_f_list[label].write(line1 + line2 + line3 + line4)
-
-    in_fastq_f.close()
-
-    for i in range(0, len(out_allele_fastq_f_list)):
-        out_allele_fastq_f_list[i].close()
-
-    return
-
-
-def auot_GMM(X, max_num_components, cov_type, max_mutual_overlap):
-    for n in range(1, max_num_components+1):
-        gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init=10).fit(X)
-        for i in range(0, n):
-            for j in range(i+1, n):
-                component_i_mean1 = gmm.means_[i][0]
-                component_i_mean2 = gmm.means_[i][1]
-                component_j_mean1 = gmm.means_[j][0]
-                component_j_mean2 = gmm.means_[j][1]
-   
-                component_i_cov1 = gmm.covariances_[i][0]
-                component_i_cov2 = gmm.covariances_[i][1]
-                component_j_cov1 = gmm.covariances_[j][0]
-                component_j_cov2 = gmm.covariances_[j][1]
-                
-                component_i_sd1 = max(1.0, math.sqrt(component_i_cov1))
-                component_i_sd2 = max(1.0, math.sqrt(component_i_cov2))
-                component_j_sd1 = max(1.0, math.sqrt(component_j_cov1))
-                component_j_sd2 = max(1.0, math.sqrt(component_j_cov2))
-
-                a1 = 1.0-max_mutual_overlap
-                a2 = max_mutual_overlap
-                interval_i1 = (norm.isf(a1, component_i_mean1, component_i_sd1), norm.isf(a2, component_i_mean1, component_i_sd1))
-                interval_i2 = (norm.isf(a1, component_i_mean2, component_i_sd2), norm.isf(a2, component_i_mean2, component_i_sd2))
-                interval_j1 = (norm.isf(a1, component_j_mean1, component_j_sd1), norm.isf(a2, component_j_mean1, component_j_sd1))
-                interval_j2 = (norm.isf(a1, component_j_mean2, component_j_sd2), norm.isf(a2, component_j_mean2, component_j_sd2))
-                if has_overlap(interval_i1, interval_j1) and has_overlap(interval_i2, interval_j2):
-                    best_num_components = n - 1
-                    gmm = GaussianMixture(n_components=best_num_components, covariance_type=cov_type, n_init=10).fit(X)
-                    return best_num_components, gmm
-
-    
-    best_num_components = max_num_components
-    gmm = GaussianMixture(n_components=best_num_components, covariance_type=cov_type, n_init=10).fit(X)
-    return best_num_components, gmm
-    
-
-def has_overlap(interval1, interval2):
-    start = min(interval1[1], interval2[1])
-    end = max(interval1[0], interval2[0])
-    if end - start <= 0: 
-        return True
-    else:
-        return False
-
-def analysis_outlier(read_repeat_count_dict):
-
-    read_repeat_count_list = list()
-    for readname in read_repeat_count_dict:
-        repeat_count = read_repeat_count_dict[readname]
-        read_repeat_count_list.append(repeat_count)
-
-    min_repeat_count_cutoff, max_repeat_count_cutoff = get_outlier_cutoff_from_list(read_repeat_count_list)
- 
-    return min_repeat_count_cutoff, max_repeat_count_cutoff
-
-def analysis_outlier_2d(read_repeat_joint_count_dict):
-
-    repeat_count1_list = list()
-    repeat_count2_list = list()
-
-    for readname in read_repeat_joint_count_dict:
-        repeat_count1, repeat_count2 = read_repeat_joint_count_dict[readname]
-        repeat_count1_list.append(repeat_count1)
-        repeat_count2_list.append(repeat_count2)
-
-    min_count1, max_count1 = get_outlier_cutoff_from_list(repeat_count1_list)
-    min_count2, max_count2 = get_outlier_cutoff_from_list(repeat_count2_list)
-    
-    return min_count1, max_count1, min_count2, max_count2
-
-def get_outlier_cutoff_from_list(repeat_count_list):
-
-    mean = np.mean(repeat_count_list)
-    std = np.std(repeat_count_list)
-
-    min_repeat_count_cutoff = mean - 3 * std
-    if min_repeat_count_cutoff < 0: min_repeat_count_cutoff = 0
-    max_repeat_count_cutoff = mean + 3 * std
-
-    return min_repeat_count_cutoff, max_repeat_count_cutoff
-
-
-
-
-class Repeat:
-    def __init__(self):
-        self.repeat_id = ''
-        self.chrom = ''
-        self.start = -1
-        self.end = -1
-        self.repeat_unit = ''
-        self.repeat_unit_size = 0
-        self.min_size = 0
-        self.max_size = 1000
-        self.round1_min_size = 0
-        self.round1_max_size = 1000
-        self.is_main = 0
-    
-    def init_from_string(self, string):
-        col_list = string.split(':')
-        if len(col_list) != 5:
-            tk.eprint('ERROR! --repeat1 and --repeat2 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074876:3074933:CAG:200).')
-            sys.exit(1)
-        
-        self.chrom, self.start, self.end, self.repeat_unit, self.max_size = col_list
-        self.start = int(self.start)
-        self.end   = int(self.end)
-        self.repeat_unit_size = len(self.repeat_unit)
-        self.min_size = 0
-        self.max_size = int(self.max_size)
-        self.repeat_id = '_'.join(col_list[0:4])
-        #self.start -= 1
-        return self
-
-class Round1Estimation:
-    def __init__(self):
-        self.repeat1_count_range_dict = dict()
-        self.repeat2_count_range_dict = dict()
-        self.potential_repeat_region_dict = dict()
-        self.bad_reads_set = set()
-    
-    def output_repeat2_boundaries(self):
-        out_string = ''
-        for readname in self.repeat2_count_range_dict:
-            lower_bound, upper_bound = self.repeat2_count_range_dict[readname]
-            out_string += f'{readname}\t{lower_bound}\t{upper_bound}\n'
-
-        return out_string
-
-class RepeatSize:
-    def __init__(self):
-        self.repeat1_count_dict = dict()
-        self.repeat2_count_dict = dict()
-        self.step_size1 = 1
-        self.step_size2 = 1
 
 
 if __name__ == '__main__':
