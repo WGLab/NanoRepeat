@@ -237,7 +237,7 @@ The `*summary.txt` file gives the quantification of the repeat sizes. It has the
 
 The content of `HTT.summary.txt` is shown below: 
 
-| Input_FASTQ | ./NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz |
+| Input_FASTQ | path/to/HTT_amplicon.fastq.gz |
 |---|---|
 | Method | 2D-GMM |
 | Num_Alleles | 2 |
