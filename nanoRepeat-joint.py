@@ -102,7 +102,7 @@ def parse_user_arguments():
     parser.add_argument('-1', '--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074876:3074933:CAG:200)')
     parser.add_argument('-2', '--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074946:3074966:CCG:20)')
     parser.add_argument('-o', '--out_prefix',   required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files.')
-    parser.add_argument('-v', '--version',      action='version', version='%(prog)s 1.2')
+    
 
     ### optional arguments ### ploidy
     parser.add_argument('-c', '--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads used by minimap2 (default: 1)')
@@ -112,6 +112,9 @@ def parse_user_arguments():
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
+
+    ### Version
+    parser.add_argument('-v', '--version',      action='version', version= f'NanoRepeat {tk.Version}')
 
 
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:

@@ -35,6 +35,7 @@ from distutils import spawn
 from timeit import repeat
 
 TimeFormat = '%m/%d/%Y %H:%M:%S'
+Version = '1.2'
 
 class ReadError:
     def __init__(self, num_match = 0, num_mismatch = 1000000, num_ins = 1000000, num_del = 1000000, align_score = 0):
