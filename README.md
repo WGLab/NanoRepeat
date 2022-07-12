@@ -236,17 +236,15 @@ The `*summary.txt` file gives the quantification of the repeat sizes. It has the
 4) quantification of repeat sizes of each allele
 
 The content of `HTT.summary.txt` is shown below: 
-```
-$ cat HTT.summary.txt 
-Input_FASTQ:	/home/fangli/projects/nanorepeat_tutorial/NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz
-Method:	2D-GMM
-Num_Alleles:	2
-Num_Removed_Reads:	0
-Allele1_Num_Reads:	733
-Allele1_chr4-3074876-3074933-CAG.Repeat_Size:	17
-Allele1_chr4-3074946-3074966-CCG.Repeat_Size:	10
-Allele2_Num_Reads:	856
-Allele2_chr4-3074876-3074933-CAG.Repeat_Size:	55
-Allele2_chr4-3074946-3074966-CCG.Repeat_Size:	7
-```
 
+| Input_FASTQ | ./NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz |
+|---|---|
+| Method | 2D-GMM |
+| Num_Alleles | 2 |
+| Num_Removed_Reads | 0 |
+| Allele1_Num_Reads | 733 |
+| Allele1_chr4-3074876-3074933-CAG.Repeat_Size | 17 |
+| Allele1_chr4-3074946-3074966-CCG.Repeat_Size | 10 |
+| Allele2_Num_Reads | 856 |
+| Allele2_chr4-3074876-3074933-CAG.Repeat_Size | 55 |
+| Allele2_chr4-3074946-3074966-CCG.Repeat_Size | 7 |
