@@ -74,7 +74,7 @@ class Readinfo:
 
 def simulate_reads(read_repeat_count_list, error_rate):
     min_std = 1.0
-    simulated_read_repeat_count_list = read_repeat_count_list * 50
+    simulated_read_repeat_count_list = read_repeat_count_list * 100
     for i in range(0, len(simulated_read_repeat_count_list)):
         std = min_std + 1.25 * error_rate/3.0 * simulated_read_repeat_count_list[i]
         random_error = random.gauss(0, std)
@@ -484,17 +484,16 @@ def output_summary_file_2d(in_fastq_file, allele_list, repeat1_id, repeat2_id, n
     num_alleles = len(allele_list)
     out_summray_file = out_prefix + '.summary.txt'
     out_summray_f = open(out_summray_file, 'w')
-    summary_info  = f'Input_FASTQ:\t{in_fastq_file}\n'
-    summary_info += f'Method:\t2D-GMM\n'
-    summary_info += f'Num_Alleles:\t{num_alleles}\n'
-    if num_removed_reads > 0:
-        summary_info += f'Num_Removed_Reads:\t{num_removed_reads}\n'
+    summary_info  = f'Input_FASTQ\t{in_fastq_file}\n'
+    summary_info += f'Method\t2D-GMM\n'
+    summary_info += f'Num_Alleles\t{num_alleles}\n'
+    summary_info += f'Num_Removed_Reads\t{num_removed_reads}\n'
 
     for label in range(0, num_alleles):
         allele_id = label + 1
-        summary_info += f'Allele{allele_id}_Num_Reads:\t{allele_list[label].num_reads}\n'
-        summary_info += f'Allele{allele_id}_{repeat1_id}.Repeat_Size:\t{allele_list[label].repeat1_median_size}\n'
-        summary_info += f'Allele{allele_id}_{repeat2_id}.Repeat_Size:\t{allele_list[label].repeat2_median_size}\n'
+        summary_info += f'Allele{allele_id}_Num_Reads\t{allele_list[label].num_reads}\n'
+        summary_info += f'Allele{allele_id}_{repeat1_id}.Repeat_Size\t{allele_list[label].repeat1_median_size}\n'
+        summary_info += f'Allele{allele_id}_{repeat2_id}.Repeat_Size\t{allele_list[label].repeat2_median_size}\n'
 
     out_summray_f.write(summary_info)
     out_summray_f.close()
@@ -591,7 +590,7 @@ def plot_repeat_counts_1d(readinfo_dict, allele_list, repeat_id, out_prefix):
     for label in range(0, len(allele_list)):
         repeat1_predicted_size_list.append(allele_list[label].repeat1_median_size)
 
-    plot_hist1d(x_2d_list, b1, repeat_id, repeat1_predicted_size_list, hist_figure_file)
+    plot_hist1d(x_2d_list, b1, repeat_id, repeat1_predicted_size_list, allele_list, hist_figure_file)
 
     return
 
@@ -644,13 +643,64 @@ def plot_repeat_counts_2d(readinfo_dict, allele_list, repeat1_id, repeat2_id, ou
         repeat1_predicted_size_list.append(allele_list[label].repeat1_median_size)
         repeat2_predicted_size_list.append(allele_list[label].repeat2_median_size)
 
-    plot_hist2d(x_list, y_list, b1, b2, repeat1_id, repeat2_id, hist2d_figure_file)
-    plot_hist1d(x_2d_list, b1, repeat1_id, repeat1_predicted_size_list, repeat1_hist_figure_file)
-    plot_hist1d(y_2d_list, b2, repeat2_id, repeat2_predicted_size_list, repeat2_hist_figure_file)
+    plot_hist2d(x_list, y_list, b1, b2, repeat1_id, repeat2_id, allele_list, hist2d_figure_file)
+    plot_hist1d(x_2d_list, b1, repeat1_id, repeat1_predicted_size_list, allele_list, repeat1_hist_figure_file)
+    plot_hist1d(y_2d_list, b2, repeat2_id, repeat2_predicted_size_list, allele_list, repeat2_hist_figure_file)
 
     return 
 
-def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, out_file):
+def get_1d_max_min_from_allele_list(allele_list):
+
+    gmm_min_list = []
+    gmm_max_list = []
+
+    for allele in allele_list:
+        gmm_min_list.append(allele.gmm_min1)
+        gmm_max_list.append(allele.gmm_max1)
+
+    xmin = min(gmm_min_list)
+    xmax = max(gmm_max_list)
+
+    xmax = int(((xmax * 1)/10.0 +1 )* 10)
+    xmin = int(((xmin)/10.0 -1 )* 10)
+
+    if xmin < 10: xmin = 0
+
+    return xmin, xmax
+
+def get_2d_max_min_from_allele_list(allele_list):
+
+    assert(len(allele_list) > 0)
+
+    gmm_min1_list = []
+    gmm_max1_list = []
+    gmm_min2_list = []
+    gmm_max2_list = []
+
+    for allele in allele_list:
+        gmm_min1_list.append(allele.gmm_min1)
+        gmm_min2_list.append(allele.gmm_min2)
+        gmm_max1_list.append(allele.gmm_max1)
+        gmm_max2_list.append(allele.gmm_max2)
+
+    xmin = min(gmm_min1_list)
+    xmax = max(gmm_max1_list)
+    ymin = min(gmm_min2_list)
+    ymax = max(gmm_max2_list)
+
+    xmax = int(((xmax * 1)/10.0 +1 )* 10)
+    ymax = int(((ymax * 1)/10.0 +1 )* 10)
+
+    xmin = int(((xmin)/10.0 -1 )* 10)
+    ymin = int(((ymin)/10.0 -1 )* 10)
+
+    if xmin < 10: xmin = 0
+    if ymin < 10: ymin = 0
+    
+    return xmin, xmax, ymin, ymax
+
+
+def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, allele_list, out_file):
 
     plt.figure (figsize=(6, 4))
     
@@ -669,15 +719,16 @@ def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, out_file):
     plt.xlabel('repeat size')
     plt.ylabel('number of reads')
     
-    max_x = int(((max_x * 1.618)/5.0 +1 )* 5)
-    plt.xlim(0, max_x)
+    xmin, xmax = get_1d_max_min_from_allele_list(allele_list)
+    
+    plt.xlim(xmin, xmax)
 
     plt.savefig(out_file, dpi=300)
     plt.close('all')
 
     return
 
-def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
+def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, allele_list, out_file):
 
     plt.figure (figsize=(8, 4))
     plt.hist2d (x_list, y_list, [b1, b2], cmap = 'binary')
@@ -685,10 +736,15 @@ def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
     plt.title('2D histogram of repeat size')
     plt.xlabel('repeat size (%s)' % repeat_id1)
     plt.ylabel('repeat size (%s)' % repeat_id2)
+
+    xmin, xmax, ymin, ymax = get_2d_max_min_from_allele_list(allele_list)
+   
+    '''
     xmin = min(x_list)
     xmax = max(x_list)
     ymin = min(y_list)
     ymax = max(y_list)
+    '''
     
     if xmax - xmin < 20: 
         delta = (20 - (xmax - xmin))/2
@@ -700,6 +756,7 @@ def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
         ymin -= delta
         if ymin < 0: ymin = 0
         ymax = ymin + 20
+    
     plt.xlim(xmin, xmax)
     plt.ylim(ymin, ymax)
 
@@ -708,7 +765,7 @@ def plot_hist2d(x_list, y_list, b1, b2, repeat_id1, repeat_id2, out_file):
 
     return
 
-def scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat1_id, repeat2_id, out_prefix):
+def scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat1_id, repeat2_id, allele_list, out_prefix):
 
     scatter_plot_file = out_prefix + '.scatter.png'
 
@@ -741,23 +798,8 @@ def scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score
     norm = Normalize(vmin = np.min(Z), vmax = np.max(Z))
     cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
     cbar.ax.set_ylabel('Count')
-    
-    xmin = min(X)
-    xmax = max(X)
-    ymin = min(Y)
-    ymax = max(Y)
 
-    figure_max_x = int(((xmax * 1.4)/10.0 +1 )* 10)
-    figure_max_y = int(((ymax * 1.4)/10.0 +1 )* 10)
-
-    figure_min_x = int(((xmin / 1.4)/10.0 -1 )* 10)
-    figure_min_y = int(((ymin / 1.4)/10.0 -1 )* 10)
-
-    if figure_min_x < 10: figure_min_x = 0
-    if figure_min_y < 10: figure_min_y = 0
-
-    plt.xlim(figure_min_x, figure_max_x)
-    plt.ylim(figure_min_y, figure_max_y)
+    figure_min_x, figure_max_x, figure_min_y, figure_max_y = get_2d_max_min_from_allele_list(allele_list)
 
     a = np.linspace(figure_min_x, figure_max_x, 400)
     b = np.linspace(figure_min_y, figure_max_y, 400)

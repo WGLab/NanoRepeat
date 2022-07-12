@@ -101,8 +101,8 @@ def parse_user_arguments():
     parser.add_argument('-r', '--ref_fasta',    required = True,  metavar = 'PATH',   type = str, help = 'reference genome sequence in FASTA format')
     parser.add_argument('-1', '--repeat1',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'first tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074876:3074933:CAG:200)')
     parser.add_argument('-2', '--repeat2',      required = True,  metavar = 'chr:start:end:repeat_unit:max_size', type = str, help = 'second tandem repeat in the format of chr:start:end:repeat_unit:max_size. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive (e.g. chr4:3074946:3074966:CCG:20)')
-    parser.add_argument('-o', '--out_dir',      required = True,  metavar = 'PATH',   type = str, help = 'path to the output directory')
-    parser.add_argument('-v', '--version',      action='version', version='%(prog)s 0.3.0')
+    parser.add_argument('-o', '--out_prefix',   required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files.')
+    parser.add_argument('-v', '--version',      action='version', version='%(prog)s 1.2')
 
     ### optional arguments ### ploidy
     parser.add_argument('-c', '--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads used by minimap2 (default: 1)')
@@ -139,7 +139,6 @@ def parse_user_arguments():
 
     input_args.in_fq       = os.path.abspath(input_args.in_fq)
     input_args.ref_fasta   = os.path.abspath(input_args.ref_fasta)
-    input_args.out_dir     = os.path.abspath(input_args.out_dir)
 
     if input_args.minimap2 == '': 
         input_args.minimap2 = tk.find_executable_path('minimap2')
@@ -148,7 +147,7 @@ def parse_user_arguments():
             sys.exit(1)
         else:
             if os.path.exists(input_args.minimap2):
-                tk.eprint('NOTICE: found path to minimap2: %s' % input_args.minimap2)
+                tk.eprint('NOTICE: Found path to minimap2: %s' % input_args.minimap2)
             else:
                 tk.eprint('ERROR! minimap2 was not found! Please supply the path to --minimap2')
 
@@ -177,8 +176,24 @@ def nanoRepeat_joint (input_args):
     if n_input_reads < input_args.ploidy:
         tk.eprint(f'ERROR: No enough reads for analysis. Ploidy was set to {input_args.ploidy} but there were only {n_input_reads} reads in the fastq file: {input_args.in_fq}\n')
         sys.exit(1)
+    
+    out_dir, out_file_prefix = os.path.split(input_args.out_prefix)
+    out_dir = os.path.abspath(out_dir)
 
-    tk.create_dir(input_args.out_dir)
+    if out_file_prefix == '':
+        out_file_prefix = os.path.split(input_args.in_fq)[1]
+        input_args.out_prefix = os.path.join(out_dir, out_file_prefix)
+    else:
+        input_args.out_prefix = os.path.abspath(input_args.out_prefix)
+
+    tk.create_dir(out_dir)
+
+    tk.eprint(f'NOTICE: Input file is: {input_args.in_fq }')
+    tk.eprint(f'NOTICE: Referece fasta file is: {input_args.ref_fasta}')
+    tk.eprint(f'NOTICE: Repeat1 is: {input_args.repeat1}')
+    tk.eprint(f'NOTICE: Repeat2 is: {input_args.repeat2}')
+    tk.eprint(f'NOTICE: Output prefix is: {input_args.out_prefix}')
+    
 
     repeat1 = Repeat().init_from_string(input_args.repeat1)
     repeat2 = Repeat().init_from_string(input_args.repeat2)
@@ -198,9 +213,7 @@ def nanoRepeat_joint (input_args):
         tk.eprint('ERROR: joint quantification only works with two nearby repeat regions (distance < 100 bp). The two repeats are far away from each other and there is no need to do joint quantification.\n')
         sys.exit(1)
 
-    in_fastq_prefix = os.path.splitext(os.path.split(input_args.in_fq)[1])[0]
-    out_prefix = os.path.join(input_args.out_dir, in_fastq_prefix)
-    temp_out_dir = os.path.join(input_args.out_dir, '%s.NanoRepeat.temp' % in_fastq_prefix)
+    temp_out_dir = os.path.join(out_dir, f'{out_file_prefix}.NanoRepeat.temp')
     tk.create_dir(temp_out_dir)
 
     repeat_chrom_seq = tk.read_one_chr_from_fasta_file(input_args.ref_fasta, repeat1.chrom)
@@ -210,19 +223,18 @@ def nanoRepeat_joint (input_args):
     
     platform = 'ont'
 
-    tk.eprint(f'NOTICE: input file is: {input_args.in_fq }')
     initial_estimation = initial_estimate_repeat_size(input_args.minimap2, repeat_chrom_seq, input_args.in_fq, platform, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
 
     final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, platform, input_args.num_threads, temp_out_dir)
     
-    read_repeat_joint_count_dict = output_repeat_size_2d (input_args.in_fq, repeat1.repeat_id, repeat2.repeat_id, out_prefix, final_estimation.repeat1_count_dict, final_estimation.repeat2_count_dict)
+    read_repeat_joint_count_dict = output_repeat_size_2d (input_args.in_fq, repeat1.repeat_id, repeat2.repeat_id, input_args.out_prefix, final_estimation.repeat1_count_dict, final_estimation.repeat2_count_dict)
 
-    tk.eprint('NOTICE: phasing reads using GMM')
+    tk.eprint('NOTICE: Phasing reads using GMM')
     num_removed_reads = 0
-    split_alleles_using_gmm_2d (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, input_args.max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, input_args.in_fq, input_args.out_dir)
+    split_alleles_using_gmm_2d (input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.remove_noisy_reads, input_args.max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, input_args.in_fq, input_args.out_prefix)
 
     shutil.rmtree(temp_out_dir)
-    tk.eprint('NOTICE: program finished. Output files are here: %s\n' % input_args.out_dir)
+    tk.eprint(f'NOTICE: Program finished. Output files are here: {out_dir}\n')
 
     return
 
@@ -668,8 +680,8 @@ def fastq_file_to_dict(in_fastq_file):
 
     return fastq_dict
 
-def remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir):
-    tk.eprint('NOTICE: try to remove noisy reads')
+def remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_prefix):
+    tk.eprint('NOTICE: Try to remove noisy reads')
     allele_list.sort(key = lambda allele:allele.num_reads)
     num_removed_reads = 0
     while len(allele_list) > ploidy and len(allele_list) >= 2:
@@ -680,7 +692,7 @@ def remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, m
             break
 
     read_repeat_joint_count_dict = dict()
-    tk.eprint(f'NOTICE: there are {len(allele_list)} alleles after removing noisy reads')
+    tk.eprint(f'NOTICE: There are {len(allele_list)} alleles after removing noisy reads')
     for allele in allele_list:
         for i in range(0, len(allele.readname_list)):
             readname = allele.readname_list[i]
@@ -689,10 +701,10 @@ def remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, m
             read_repeat_joint_count_dict[readname] = (repeat_size1, repeat_size2)
     
     remove_noisy_reads = False
-    return split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_dir)
+    return split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_prefix)
 
 
-def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_dir):
+def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_noisy_reads, max_num_components, repeat1, repeat2, read_repeat_joint_count_dict, num_removed_reads, in_fastq_file, out_prefix):
     
     if ploidy < 1:
         tk.eprint('ploidy must be >= 1 !\n')
@@ -701,10 +713,6 @@ def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_n
     if len(read_repeat_joint_count_dict) < ploidy or len(read_repeat_joint_count_dict) == 1:
         tk.eprint('WARNING: No enough reads! input fastq file is: %s\n' % in_fastq_file)
         return
-
-    in_fastq_prefix  = os.path.splitext(os.path.split(in_fastq_file)[1])[0]
-    out_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
-    out_fastq_prefix = os.path.join(out_dir, '%s.JointGMM' % (in_fastq_prefix))
 
     cov_type = 'diag'
     dimension = 2
@@ -716,13 +724,13 @@ def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_n
     simualted_read_repeat_count_array = np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
 
     best_n_components, final_gmm = auto_GMM_2d (simualted_read_repeat_count_array, max_num_components, cov_type, max_mutual_overlap)
-    tk.eprint('NOTICE: number of alleles = %d' % best_n_components)
+    tk.eprint('NOTICE: Number of alleles = %d' % best_n_components)
     
     allele_list = create_allele_list_2d(best_n_components, final_gmm, readname_list, read_repeat_count_array, read_repeat_joint_count_dict, probability_cutoff)
     
     num_removed_reads = 0
     if remove_noisy_reads == True and len(allele_list) > ploidy:
-        return remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_dir)
+        return remove_noisy_reads_2d(allele_list, ploidy, error_rate, max_mutual_overlap, max_num_components, repeat1, repeat2, in_fastq_file, out_prefix)
     
     allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
@@ -730,19 +738,19 @@ def split_alleles_using_gmm_2d (ploidy, error_rate, max_mutual_overlap, remove_n
 
     score_cut_off = calculate_log_likelyhood_cutoff(final_gmm, 0.95)
 
-    tk.eprint('NOTICE: writing phasing results...')
+    tk.eprint('NOTICE: Writing phasing results...')
     output_phasing_results_2d(allele_list, repeat1.repeat_id, repeat2.repeat_id, in_fastq_file, out_prefix)
 
-    tk.eprint('NOTICE: writing to output fastq files...')
-    output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_fastq_prefix)
+    tk.eprint('NOTICE: Writing to output fastq files...')
+    output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_prefix)
 
-    tk.eprint('NOTICE: writing summary file...')
+    tk.eprint('NOTICE: Writing summary file...')
     output_summary_file_2d(in_fastq_file, allele_list, repeat1.repeat_id, repeat2.repeat_id, num_removed_reads, out_prefix)
 
-    tk.eprint('NOTICE: plotting figures...')
+    tk.eprint('NOTICE: Plotting figures...')
     plot_repeat_counts_2d(readinfo_dict, allele_list, repeat1.repeat_id, repeat2.repeat_id, out_prefix)
 
-    scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat1.repeat_id, repeat2.repeat_id, out_prefix)
+    scatter_plot_with_contour_2d (read_repeat_joint_count_dict, final_gmm, score_cut_off, repeat1.repeat_id, repeat2.repeat_id, allele_list, out_prefix)
 
     return
 

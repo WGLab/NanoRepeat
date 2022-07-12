@@ -251,7 +251,7 @@ def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, 
 
     preset = tk.get_preset_for_minimap2('ont')
     cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
-    tk.eprint(f'NOTICE: running command: {cmd}')
+    tk.eprint(f'NOTICE: Running command: {cmd}')
     tk.run_system_cmd(cmd)
 
     find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_file)
@@ -331,7 +331,7 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
     minimap2_parameters = ' -x map-ont '
     cmd = f'{minimap2} -c -t {num_cpu} {minimap2_parameters} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
     
-    tk.eprint(f'NOTICE: running command: {cmd}')
+    tk.eprint(f'NOTICE: Running command: {cmd}')
     tk.run_system_cmd(cmd)
     round1_paf_f = open(round1_paf_file, 'r')
     lines = list(round1_paf_f)
@@ -442,7 +442,7 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
 
 def remove_noisy_reads_1d(allele_list, ploidy):
 
-    tk.eprint('NOTICE: try to remove noisy reads')
+    tk.eprint('NOTICE: Trying to remove noisy reads')
     allele_list.sort(key = lambda allele:allele.num_reads)
     num_removed_reads = 0
     while len(allele_list) > ploidy and len(allele_list) >= 2:
@@ -489,30 +489,30 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
     simualted_read_repeat_count_array = np.array(simulated_read_repeat_count_list).reshape(-1, dimension)
 
     best_n_components, final_gmm = auto_GMM_1d (simualted_read_repeat_count_array, max_num_components, cov_type, max_mutual_overlap)
-    tk.eprint(f'NOTCIE: number of alleles={best_n_components}')
+    tk.eprint(f'NOTCIE: Number of alleles={best_n_components}')
     
     allele_list = create_allele_list_1d(best_n_components, final_gmm, readname_list, read_repeat_count_array, read_repeat_count_dict, probability_cutoff)
     
     num_removed_reads = 0
     if remove_noisy_reads == True and len(allele_list) > ploidy:
         allele_list, num_removed_reads = remove_noisy_reads_1d(allele_list, ploidy)
-        tk.eprint(f'NOTICE: there are {len(allele_list)} alleles after removing noisy reads')
+        tk.eprint(f'NOTICE: There are {len(allele_list)} alleles after removing noisy reads')
     
     best_n_components = len(allele_list)
     allele_list.sort(key = lambda allele:allele.gmm_mean1)
 
     readinfo_dict = create_readinfo_dict_from_allele_list(allele_list, dimension)
 
-    tk.eprint('NOTICE: writing phasing results...')
+    tk.eprint('NOTICE: Writing phasing results...')
     output_phasing_results_1d(allele_list, repeat_region.to_unique_id(), repeat_region.out_prefix)
     
-    tk.eprint('NOTICE: writing to output fastq files...')
+    tk.eprint('NOTICE: Writing to output fastq files...')
     output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_prefix)
 
-    tk.eprint('NOTICE: writing summary file...')
+    tk.eprint('NOTICE: Writing summary file...')
     output_summary_file_1d(allele_list, repeat_region.to_unique_id(), num_removed_reads, out_prefix)
 
-    tk.eprint('NOTICE: plotting figures...')
+    tk.eprint('NOTICE: Plotting figures...')
     plot_repeat_counts_1d(readinfo_dict, allele_list, repeat_region.to_unique_id(), out_prefix)
 
     return
@@ -528,7 +528,7 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
 
     # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
-    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file}'
+    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
@@ -540,25 +540,25 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
     
-    tk.eprint('NOTICE: step 1: finding anchor location in reads')
+    tk.eprint('NOTICE: Step 1: finding anchor location in reads')
     status = find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
-    tk.eprint('NOTICE: step 1 finished')
+    tk.eprint('NOTICE: Step 1 finished')
 
     # make core sequence fastq
     make_core_seq_fastq(repeat_region)
 
-    tk.eprint('NOTICE: step 2: round 1 and round 2 estimation')
+    tk.eprint('NOTICE: Step 2: round 1 and round 2 estimation')
     round1_and_round2_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
-    tk.eprint('NOTICE: step 2 finished')
+    tk.eprint('NOTICE: Step 2 finished')
 
-    tk.eprint('NOTICE: step 3: round 3 estimation')
+    tk.eprint('NOTICE: Step 3: round 3 estimation')
     round3_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
-    tk.eprint('NOTICE: step 3 finished')
+    tk.eprint('NOTICE: Step 3 finished')
 
-    tk.eprint('NOTICE: writing to repeat size file...')
+    tk.eprint('NOTICE: Writing to repeat size file...')
     output_repeat_size_1d(repeat_region)
 
-    tk.eprint('NOTICE: step 4: phasing reads using GMM')
+    tk.eprint('NOTICE: Step 4: phasing reads using GMM')
     split_allele_using_gmm_1d(repeat_region, input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
     
     shutil.rmtree(repeat_region.temp_out_dir)
@@ -567,17 +567,17 @@ def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_reg
 
 def nanoRepeat_bam (input_args, in_bam_file):
     
-    tk.eprint(f'NOTICE: reading repeat region file: {input_args.repeat_region_bed}')
+    tk.eprint(f'NOTICE: Reading repeat region file: {input_args.repeat_region_bed}')
     repeat_region_list = read_repeat_region_file(input_args.repeat_region_bed)
 
-    tk.eprint(f'NOTICE: reading reference fasta file: {input_args.ref_fasta}')
+    tk.eprint(f'NOTICE: Reading reference fasta file: {input_args.ref_fasta}')
     ref_fasta_dict = tk.fasta_file2dict(input_args.ref_fasta)
     
     for repeat_region in repeat_region_list:
-        tk.eprint(f'NOTICE: quantifying repeat: {repeat_region.to_unique_id()}')
+        tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_unique_id()}')
         quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
 
-    tk.eprint('NOTICE: program finished.')
+    tk.eprint('NOTICE: Program finished.')
 
     return
 
