@@ -6,7 +6,7 @@
 - [Usage](#usage)
   - [Regular use cases](#regular_use_case)
   - [Joint quantification of two adjacent repeats](#joint_quantification)
-
+- [Citation](#citation)
 
 ## <a name="installation"></a> Installation
 
@@ -248,3 +248,25 @@ The content of `HTT.summary.txt` is shown below:
 | Allele2_Num_Reads | 856 |
 | Allele2_chr4-3074876-3074933-CAG.Repeat_Size | 55 |
 | Allele2_chr4-3074946-3074966-CCG.Repeat_Size | 7 |
+
+
+## <a name="citation"></a> Citation
+If you use NanoRepeat, please cite: 
+
+Fang, Li, & Wang, Kai. (2022). NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore sequencing data (v1.2). Zenodo. https://doi.org/10.5281/zenodo.7024485
+
+BibTeX format: 
+```
+@software{fang_li_2022_7024485,
+  author       = {Fang, Li and
+                  Wang, Kai},
+  title        = {{NanoRepeat: quantification of Short Tandem Repeats 
+                   (STRs) from Oxford Nanopore sequencing data}},
+  month        = aug,
+  year         = 2022,
+  publisher    = {Zenodo},
+  version      = {v1.2},
+  doi          = {10.5281/zenodo.7024485},
+  url          = {https://doi.org/10.5281/zenodo.7024485}
+}
+```
