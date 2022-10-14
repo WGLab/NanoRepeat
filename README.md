@@ -1,5 +1,7 @@
 # NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore sequencing data
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7024485.svg)](https://doi.org/10.5281/zenodo.7024485)
+
 ## Table of Contents
 
 - [Installation](#installation)
@@ -253,20 +255,25 @@ The content of `HTT.summary.txt` is shown below:
 ## <a name="citation"></a> Citation
 If you use NanoRepeat, please cite: 
 
-Fang, Li, & Wang, Kai. (2022). NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore sequencing data (v1.2). Zenodo. https://doi.org/10.5281/zenodo.7024485
+
+Li Fang, Alex Mas Monteys, Alexandra Dürr, Megan Keiser, Congsheng Cheng, Akhil Harapanahalli, Pedro Gonzalez-Alegre, Beverly L. Davidson, Kai Wang. Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing. Human Genetics and Genomics Advances, 2022, DOI: https://doi.org/10.1016/j.xhgg.2022.100146.
+
 
 BibTeX format: 
+
 ```
-@software{fang_li_2022_7024485,
-  author       = {Fang, Li and
-                  Wang, Kai},
-  title        = {{NanoRepeat: quantification of Short Tandem Repeats 
-                   (STRs) from Oxford Nanopore sequencing data}},
-  month        = aug,
-  year         = 2022,
-  publisher    = {Zenodo},
-  version      = {v1.2},
-  doi          = {10.5281/zenodo.7024485},
-  url          = {https://doi.org/10.5281/zenodo.7024485}
+@article{FANG2022100146,
+title    = {Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing},
+journal  = {Human Genetics and Genomics Advances},
+pages    = {100146},
+year     = {2022},
+issn     = {2666-2477},
+doi      = {https://doi.org/10.1016/j.xhgg.2022.100146},
+url      = {https://www.sciencedirect.com/science/article/pii/S266624772200063X},
+author   = {Li Fang and Alex Mas Monteys and Alexandra Dürr and Megan Keiser and Congsheng Cheng and Akhil Harapanahalli and Pedro Gonzalez-Alegre and Beverly L. Davidson and Kai Wang},
+keywords = {Huntington's disease, long-read sequencing, CRISPR, SNP, repeat detection}
 }
 ```
+
+
+
