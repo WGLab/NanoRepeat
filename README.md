@@ -256,22 +256,24 @@ The content of `HTT.summary.txt` is shown below:
 If you use NanoRepeat, please cite: 
 
 
-Li Fang, Alex Mas Monteys, Alexandra Dürr, Megan Keiser, Congsheng Cheng, Akhil Harapanahalli, Pedro Gonzalez-Alegre, Beverly L. Davidson, Kai Wang. Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing. Human Genetics and Genomics Advances, 2022, DOI: https://doi.org/10.1016/j.xhgg.2022.100146.
+Fang L, Monteys AM, Dürr A, Keiser M, Cheng C, Harapanahalli A, et al. Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing. Human Genetics and Genomics Advances. 2023;4(1):100146. DOI: https://doi.org/10.1016/j.xhgg.2022.100146.
 
 
 BibTeX format: 
 
 ```
-@article{FANG2022100146,
-title    = {Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing},
-journal  = {Human Genetics and Genomics Advances},
-pages    = {100146},
-year     = {2022},
-issn     = {2666-2477},
-doi      = {https://doi.org/10.1016/j.xhgg.2022.100146},
-url      = {https://www.sciencedirect.com/science/article/pii/S266624772200063X},
-author   = {Li Fang and Alex Mas Monteys and Alexandra Dürr and Megan Keiser and Congsheng Cheng and Akhil Harapanahalli and Pedro Gonzalez-Alegre and Beverly L. Davidson and Kai Wang},
-keywords = {Huntington's disease, long-read sequencing, CRISPR, SNP, repeat detection}
+@article{FANG2023100146,
+	title = {Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing},
+	journal = {Human Genetics and Genomics Advances},
+	volume = {4},
+	number = {1},
+	pages = {100146},
+	year = {2023},
+	issn = {2666-2477},
+	doi = {https://doi.org/10.1016/j.xhgg.2022.100146},
+	url = {https://www.sciencedirect.com/science/article/pii/S266624772200063X},
+	author = {Li Fang and Alex Mas Monteys and Alexandra Dürr and Megan Keiser and Congsheng Cheng and Akhil Harapanahalli and Pedro Gonzalez-Alegre and Beverly L. Davidson and Kai Wang},
+	keywords = {Huntington’s disease, long-read sequencing, CRISPR, SNP, repeat detection}
 }
 ```
 
