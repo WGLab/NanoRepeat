@@ -6,11 +6,12 @@
 
 - [Installation](#installation)
 - [Usage](#usage)
-  - [Regular use cases](#regular_use_case)
+  - [Regular use cases](#regular-use-cases)
   - [Joint quantification of two adjacent repeats](#joint_quantification)
 - [Citation](#citation)
+- [Contact Us](#contact-us)
 
-## <a name="installation"></a> Installation
+## Installation
 
 #### Prerequisites:
 
@@ -27,9 +28,9 @@ cd NanoRepeat
 pip install -r requirements.txt
 ```
 
-## <a name="usage"></a> Usage
+## Usage
 
-### <a name="regular_use_case"> Regular use cases
+### Regular use cases
 
 NanoRepeat can quantify STRs from targeted sequencing or whole-genome sequencing data. We will demonstrate the usage of NanoRepeat using an example data set, which can be downloaded using the following commands. 
 
@@ -252,9 +253,8 @@ The content of `HTT.summary.txt` is shown below:
 | Allele2_chr4-3074946-3074966-CCG.Repeat_Size | 7 |
 
 
-## <a name="citation"></a> Citation
+## Citation
 If you use NanoRepeat, please cite: 
-
 
 Fang L, Monteys AM, Dürr A, Keiser M, Cheng C, Harapanahalli A, et al. Haplotyping SNPs for allele-specific gene editing of the expanded huntingtin allele using long-read sequencing. Human Genetics and Genomics Advances. 2023;4(1):100146. DOI: https://doi.org/10.1016/j.xhgg.2022.100146.
 
@@ -277,5 +277,6 @@ BibTeX format:
 }
 ```
 
+## Contact Us
 
-
+If you need any help from us, you are welcome to raise an issue at the issue page. You can also contact the first author (fangli2718@gmail.com) or the last author of the paper (wangk@chop.edu).
