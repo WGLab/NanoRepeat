@@ -471,11 +471,11 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
             read_repeat_count_dict[read_name] = repeat_region.read_dict[read_name].round3_repeat_size
 
     if len(read_repeat_count_dict) == 0:
-        tk.eprint(f'ERROR! No reads were found for repeat region: {repeat_region.to_unique_id()}')
+        tk.eprint(f'ERROR! No reads were found for repeat region: {repeat_region.to_outfile_prefix()}')
         return
 
     if len(read_repeat_count_dict) == 1:
-        tk.eprint(f'ERROR! No enough reads for phasing. Repeat region is: {repeat_region.to_unique_id()}')
+        tk.eprint(f'ERROR! No enough reads for phasing. Repeat region is: {repeat_region.to_outfile_prefix()}')
         return
 
     probability_cutoff = 0.95
@@ -519,21 +519,21 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
     
 def quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region:RepeatRegion):
 
-    temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_dir.{repeat_region.to_unique_id()}'
+    temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_dir.{repeat_region.to_outfile_prefix()}'
     os.makedirs(temp_out_dir, exist_ok=True)
 
     repeat_region.temp_out_dir = temp_out_dir
-    repeat_region.out_prefix = f'{input_args.out_prefix}.{repeat_region.to_unique_id()}'
+    repeat_region.out_prefix = f'{input_args.out_prefix}.{repeat_region.to_outfile_prefix()}'
     repeat_region.anchor_len = input_args.anchor_len
 
     # extract reads from bam file
-    repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_unique_id()}.fastq')
+    repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_outfile_prefix()}.fastq')
     cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
     if fastq_file_size == 0:
-        tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_unique_id()}')
+        tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_outfile_prefix()}')
         shutil.rmtree(repeat_region.temp_out_dir)
         return
 
@@ -574,7 +574,7 @@ def nanoRepeat_bam (input_args, in_bam_file):
     ref_fasta_dict = tk.fasta_file2dict(input_args.ref_fasta)
     
     for repeat_region in repeat_region_list:
-        tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_unique_id()}')
+        tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_outfile_prefix()}')
         quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
 
     tk.eprint('NOTICE: Program finished.')

@@ -105,7 +105,14 @@ class RepeatRegion:
     def to_unique_id(self):
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{self.repeat_unit_seq}'
 
+    def to_outfile_prefix(self):
+        if len(self.repeat_unit_seq) < 30:
+            seq = self.repeat_unit_seq
+        else:
+            seq = self.repeat_unit_seq[0:20] + '....' + self.repeat_unit_seq[-6:]
 
+        return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{seq}'
+    
 def read_repeat_region_file(repeat_region_file):
     repeat_region_list = []
     repeat_region_f = open(repeat_region_file, 'r')
