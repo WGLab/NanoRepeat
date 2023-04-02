@@ -714,7 +714,9 @@ def plot_hist1d(x_2d_list, b, repeat_id, predicted_size_list, allele_list, out_f
     for repeat_size in predicted_size_list:
         plt.axvline(x=repeat_size+0.5, color = 'grey', linestyle = ':')
 
-
+    if len(repeat_id) > 30:
+        repeat_id = repeat_id[0:30] + '...'
+    
     plt.title('Repeat size distribution (%s)' % repeat_id)
     plt.xlabel('repeat size')
     plt.ylabel('number of reads')
