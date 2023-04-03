@@ -9,6 +9,7 @@
   - [Regular use cases](#regular-use-cases)
   - [Joint quantification of two adjacent repeats](#joint_quantification)
 - [Citation](#citation)
+- [Limitation](#limitation)
 - [Contact Us](#contact-us)
 
 ## Installation
@@ -79,10 +80,10 @@ python path/to/NanoRepeat/nanoRepeat.py \
 | 1 | 14459872 |  14459935 |  AAAG   |
 | 1 | 20934886 |  20934920 |  GTTTT  |
 
+**IMPORTANT NOTICE**
+1) Please note that in BED format, all chromosome positions start from 0. `start_position` is self-inclusive but `end_position` is NOT self-inclusive. Tip: If you have 1-based positons, simply decrease the value of `start_position` by 1 and no changes for `end_position`
 
-**Please note that in BED format, all chromosome positions start from 0. `start_position` is self-inclusive but `end_position` is NOT self-inclusive.**
-
-**Tip: If you have 1-based positons, simply decrease the value of `start_position` by 1 and no changes for `end_position`**
+2) NanoRepeat assumes that the seqeunce between `start_position` and `end_position` are all repeats of the motif specified in the fourth column. There should be neither non-repeat sequences nor other repeat motifs between `start_position` and `end_position`. If a region contains two consecutive repeats, you can specify them in two rows. 
 
 `-c` specifies the number of CPU cores for alignment. 
 
@@ -276,6 +277,10 @@ BibTeX format:
 	keywords = {Huntington’s disease, long-read sequencing, CRISPR, SNP, repeat detection}
 }
 ```
+## Limitation
+a) NanoRepeat assumes that the seqeunce between `start_position` and `end_position` are all repeat sequences of the given motif. There should not be non-repeat sequences between `start_position` and `end_position`.
+
+b) because of a), NanoRepeat cannot handle mixed repeats of different motifs (i.e. a mixture of `GCCA` and `AAATT`), but imperfect repeats of approximately the same motif are OK. 
 
 ## Contact Us
 
