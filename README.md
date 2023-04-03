@@ -1,4 +1,4 @@
-# NanoRepeat: quantification of Short Tandem Repeats (STRs) from Oxford Nanopore sequencing data
+# NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7024485.svg)](https://doi.org/10.5281/zenodo.7024485)
 
