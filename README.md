@@ -35,26 +35,26 @@ pip install -r requirements.txt
 NanoRepeat can quantify STRs from targeted sequencing or whole-genome sequencing data. We will demonstrate the usage of NanoRepeat using an example data set, which can be downloaded using the following commands. 
 
 ```
-wget https://github.com/WGLab/NanoRepeat/releases/download/v1.2/NanoRepeat_v1.2_example_data.tar.gz
-tar xzf NanoRepeat_v1.2_example_data.tar.gz
+wget https://github.com/WGLab/NanoRepeat/releases/download/v1.3/NanoRepeat_v1.3_example_data.tar.bz2
+tar xjf NanoRepeat_v1.3_example_data.tar.bz2
 ```
 
-After unzipping the file, you will see a `NanoRepeat_v1.2_example_data` folder and there are two subfolders: `HG002` and `HTT_amplicon`. In this section, we will use the data under the `HG002` folder. 
+After unzipping the file, you will see a `NanoRepeat_v1.3_example_data` folder and there are two subfolders: `HG002` and `HTT_amplicon`. In this section, we will use the data under the `HG002` folder. 
 
 ```
-$ ls -1  ./NanoRepeat_v1.2_example_data/HG002/ 
+$ ls -1  ./NanoRepeat_v1.3_example_data/HG002/ 
 GRCh37_chr1.fasta
 GRCh37_chr1.fasta.fai
-HG002_GRCh37_ONT_ultralong_guppy-3.4.5.example_regions.bam
-HG002_GRCh37_ONT_ultralong_guppy-3.4.5.example_regions.bam.bai
 HG002_GRCh37_example_regions.bed
+hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam
+hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam.bai
 ```
 
 You can use the following command to run NanoRepeat: 
 
 ```
 python path/to/NanoRepeat/nanoRepeat.py \
-    -i path/to/NanoRepeat_v1.2_example_data/HG002/HG002_GRCh37_ONT_ultralong_guppy-3.4.5.example_regions.bam \
+    -i path/to/NanoRepeat_v1.2_example_data/HG002/hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam \
     -t bam \
     -r path/to/NanoRepeat_v1.2_example_data/HG002/GRCh37_chr1.fasta \
     -b path/to/NanoRepeat_v1.2_example_data/HG002/HG002_GRCh37_example_regions.bed \
@@ -64,7 +64,7 @@ python path/to/NanoRepeat/nanoRepeat.py \
     -o ./nanorepeat_output/HG002
 ```
 
-`-i` specifies the input file, which can be in `fasta`, `fastq` or `bam` format. In this case our input file is `HG002_GRCh37_ONT_ultralong_guppy-3.4.5.example_regions.bam`. It is a subset of an Oxford Nanopore whole-genome sequencing dataset of the [NIST/GIAB HG002 (GM24385/NA24385)](https://catalog.coriell.org/0/Sections/Search/Sample_Detail.aspx?Ref=NA24385&Product=DNA) genome. The sequencing data was downloaded from [here](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/HG002_NA24385_son/Ultralong_OxfordNanopore/guppy-V3.4.5/HG002_hs37d5_ONT-UL_GIAB_20200204.bam) and reads from 15 example STR regions in `chr1` were extracted. These regions were selected because they overlap with the [HG002 SV benchmark set](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/NIST_SVs_Integration_v0.6/HG002_SVs_Tier1_v0.6.vcf.gz) and are heterozygous (i.e., two alleles have different repeat sizes). 
+`-i` specifies the input file, which can be in `fasta`, `fastq` or `bam` format. In this case our input file is `hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam`. It is a subset of an Oxford Nanopore whole-genome sequencing dataset of the [NIST/GIAB HG002 (GM24385/NA24385)](https://catalog.coriell.org/0/Sections/Search/Sample_Detail.aspx?Ref=NA24385&Product=DNA) genome. The sequencing data was from the [Oxford Nanopore Technologies Benchmark Datasets](https://registry.opendata.aws/ont-open-data/) and reads from 15 example STR regions in `chr1` were extracted. These regions were selected because they overlap with the [HG002 SV benchmark set](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/NIST_SVs_Integration_v0.6/HG002_SVs_Tier1_v0.6.vcf.gz) and are heterozygous (i.e., two alleles have different repeat sizes). 
 
 `-t` specifies the input file type. There are three valid values: bam, fastq or fasta. In this case the input file is in a bam file. 
 
@@ -93,34 +93,34 @@ python path/to/NanoRepeat/nanoRepeat.py \
 If you run NanoRepeat sucessfully, you will see 90 output files (six files per region). Output files of a single repeat region look like this: 
 
 ```
-HG002.1-14459872-14459935-AAAG.allele1.fastq
-HG002.1-14459872-14459935-AAAG.allele2.fastq
-HG002.1-14459872-14459935-AAAG.hist.png
-HG002.1-14459872-14459935-AAAG.phased_reads.txt
-HG002.1-14459872-14459935-AAAG.repeat_size.txt
-HG002.1-14459872-14459935-AAAG.summary.txt
+HG002.1-7923034-7923187-TATTG.allele1.fastq
+HG002.1-7923034-7923187-TATTG.allele2.fastq
+HG002.1-7923034-7923187-TATTG.hist.png
+HG002.1-7923034-7923187-TATTG.phased_reads.txt
+HG002.1-7923034-7923187-TATTG.repeat_size.txt
+HG002.1-7923034-7923187-TATTG.summary.txt
 ```
 
-`HG002.1-14459872-14459935-AAAG.allele1.fastq` and `HG002.1-14459872-14459935-AAAG.allele2.fastq` are reads of each allele. 
+`HG002.1-7923034-7923187-TATTG.allele1.fastq` and `HG002.1-7923034-7923187-TATTG.allele2.fastq` are reads of each allele. 
 
-`HG002.1-14459872-14459935-AAAG.hist.png` is a histogram showing the repeat size distribution. Each allele has a different color.
-<p align="center"><img src="images/HG002.1-14459872-14459935-AAAG.hist.png" width="50%"></p>
+`HG002.1-7923034-7923187-TATTG.hist.png` is a histogram showing the repeat size distribution. Each allele has a different color.
+<p align="center"><img src="images/HG002.1-7923034-7923187-TATTG.hist.png" width="50%"></p>
 
 
-`HG002.1-14459872-14459935-AAAG.phased_reads.txt` shows the phasing results. First 10 lines of the `HG002.1-14459872-14459935-AAAG.phased_reads.txt` are shown below. 
+`HG002.1-7923034-7923187-TATTG.phased_reads.txt` shows the phasing results. First 10 lines of the `HG002.1-7923034-7923187-TATTG.phased_reads.txt` are shown below. 
 
 ```
-$ head HG002.1-14459872-14459935-AAAG.phased_reads.txt 
-##RepeatRegion=1-14459872-14459935-AAAG
+$ head HG002.1-7923034-7923187-TATTG.phased_reads.txt
+##RepeatRegion=1-7923034-7923187-TATTG
 #Read_Name	Allele_ID	Phasing_Confidence	Repeat_Size
-f8797b07-2781-4fc4-b5f8-36eb4a598864	1	HIGH	8.0
-f96ebe67-0d85-4a2d-ae9b-fa80812c0c98	1	HIGH	8.0
-060e11db-900e-43de-b7a3-2fe46dec1093	1	HIGH	7.0
-628d6b6b-09db-4270-bb3d-7078174abacd	1	HIGH	6.0
-6b179488-9587-47b2-82ae-b5fe6bd98fd6	1	HIGH	7.0
-0bffaad9-642d-47a8-b7b9-c827dfc2feba	1	HIGH	6.0
-764f7b3d-5ffb-4135-a495-9c74054e62a3	1	HIGH	6.0
-180ac4c5-ebad-4f4d-8e24-abf7698ff691	1	HIGH	7.5
+746edfa7-715f-4e97-913e-ef73ed97135f	1	HIGH	14.0
+d6355053-0ed2-438e-8469-28cabeb2aedf	1	HIGH	17.0
+513a749a-6ffc-47c4-a499-9f9222e93abf	1	HIGH	17.0
+fc8dc377-8772-4dc0-922d-ad694deec8d7	1	HIGH	17.0
+cd847c0e-9fbf-4abf-8f0a-ea938026ef41	1	HIGH	17.0
+f53bc376-69b4-4118-87e1-59379c640408	1	HIGH	17.0
+9b70cd2a-c1df-447a-a7aa-b5ab8046115e	1	HIGH	17.0
+6a9b6f5b-d59d-4dde-9adb-8e6ac91cc6e4	1	HIGH	17.0
 ```
 
 The columns of the `*.phased_reads.txt` file: 
@@ -132,27 +132,27 @@ The columns of the `*.phased_reads.txt` file:
 |    3   | Phasing_Confidence (two values: HIGH or LOW) |
 |    4   | Repeat_Size                                  |
 
-`HG002.1-14459872-14459935-AAAG.repeat_size.txt` is the estimated repeat sizes of ALL reads. This file is similar to the `*.phased_reads.txt` file but it also includes reads that may be removed in the phasing process (e.g. reads considered as noisy reads or outliers)
+`HG002.1-7923034-7923187-TATTG.repeat_size.txt` is the estimated repeat sizes of ALL reads. This file is similar to the `*.phased_reads.txt` file but it also includes reads that may be removed in the phasing process (e.g. reads considered as noisy reads or outliers)
 
 ```
-$ head HG002.1-14459872-14459935-AAAG.repeat_size.txt 
-##Repeat_Region=1-14459872-14459935-AAAG
+$ head HG002.1-7923034-7923187-TATTG.repeat_size.txt
+##Repeat_Region=1-7923034-7923187-TATTG
 #Read_Name	Repeat_Size
-f8797b07-2781-4fc4-b5f8-36eb4a598864	8.0
-f96ebe67-0d85-4a2d-ae9b-fa80812c0c98	8.0
-060e11db-900e-43de-b7a3-2fe46dec1093	7.0
-628d6b6b-09db-4270-bb3d-7078174abacd	6.0
-6b179488-9587-47b2-82ae-b5fe6bd98fd6	7.0
-55964703-dda1-4706-8f02-0c9f27007980	15.5
-0bffaad9-642d-47a8-b7b9-c827dfc2feba	6.0
-5a51fae4-e107-4456-bdd8-3db89a91e75d	17.0
+746edfa7-715f-4e97-913e-ef73ed97135f	14.0
+d6355053-0ed2-438e-8469-28cabeb2aedf	17.0
+dadaf0a0-8797-47ca-a21b-259928edca7e	48.0
+513a749a-6ffc-47c4-a499-9f9222e93abf	17.0
+07f65d31-4023-4d86-beba-76fb88f2cf45	48.0
+4e66c3d0-6f15-4ff7-a8a8-d5c95d57e73d	48.0
+fc8dc377-8772-4dc0-922d-ad694deec8d7	17.0
+cd847c0e-9fbf-4abf-8f0a-ea938026ef41	17.0
 ```
 
-`HG002.1-14459872-14459935-AAAG.summary.txt` gives the quantification of the repeat size. It has the following information: 1) repeat region; 2) number of detected alleles; 3) repeat size of each allele; 4) number of reads of each allele; 5) number of removed reads.
+`HG002.1-7923034-7923187-TATTG.summary.txt` gives the quantification of the repeat size. It has the following information: 1) repeat region; 2) number of detected alleles; 3) repeat size of each allele; 4) number of reads of each allele; 5) number of removed reads.
 
 ```
-$ cat HG002.1-14459872-14459935-AAAG.summary.txt 
-Repeat_Region=1-14459872-14459935-AAAG	Method=GMM	Num_Alleles=2	Num_Removed_Reads=0	Allele1_Num_Reads=24	Allele1_Repeat_Size=7	Allele2_Num_Reads=21	Allele2_Repeat_Size=15
+$ cat HG002.1-7923034-7923187-TATTG.summary.txt
+Repeat_Region=1-7923034-7923187-TATTG	Method=GMM	Num_Alleles=2	Num_Removed_Reads=0	Allele1_Num_Reads=33	Allele1_Repeat_Size=17	Allele2_Num_Reads=19	Allele2_Repeat_Size=48
 ```
 
 ### <a name="joint_quantification"> Joint quantification of two adjacent STRs (such as the `CAG` and `CCG` repeats in the HTT gene)
