@@ -15,8 +15,6 @@ setup(
     package_dir = {"": "src"},
     data_files = [("", ["LICENSE"])],
     scripts=['src/NanoRepeat/nanoRepeat.py', 'src/NanoRepeat/nanoRepeat-joint.py'],
-    long_description = readme,
-    long_description_content_type = 'text/markdown',
     install_requires=['matplotlib>=3.4.0',
                       'numpy>=1.21.6', 
                       'scikit-learn>=0.22.1']

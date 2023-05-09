@@ -16,7 +16,7 @@
 
 #### Prerequisites:
 
-1. [Python](https://www.python.org/downloads/) (version >= 3.7)
+1. [Python](https://www.python.org/downloads/) (version >= 3.8)
 2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.8)
 3. [Samtools](https://github.com/samtools/samtools.git) (version >= 1.3)
 
@@ -24,9 +24,13 @@ You may alreadly have `minimap2` and `samtools` if you performed analysis of Oxf
 
 Once you installed the above tools, you can use the following commands to install NanoRepeat:
 ```
+pip install NanoRepeat
+```
+or
+```
 git clone https://github.com/WGLab/NanoRepeat.git
 cd NanoRepeat
-pip install -r requirements.txt
+pip install .
 ```
 
 ## Usage
@@ -54,7 +58,7 @@ hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam.bai
 You can use the following command to run NanoRepeat: 
 
 ```
-python path/to/NanoRepeat/nanoRepeat.py \
+nanoRepeat.py \
     -i path/to/NanoRepeat_v1.2_example_data/HG002/hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam \
     -t bam \
     -r path/to/NanoRepeat_v1.2_example_data/HG002/GRCh37_chr1.fasta \
@@ -175,7 +179,7 @@ The reference fasta file is here: `./NanoRepeat_v1.2_example_data/HTT_amplicon/G
 
 You can use the following command to run `NanoRepeat-joint`:
 ```
-python path/to/NanoRepeat/nanoRepeat-joint.py  \
+nanoRepeat-joint.py  \
     -i ./NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz \
     -r ./NanoRepeat_v1.0_example_data/GRCh38_chr4.0_4Mb.fasta \
     -1 chr4:3074876:3074933:CAG:200      \
