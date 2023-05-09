@@ -95,9 +95,9 @@ def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -p prefix/of/output/files\n'
-    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -p prefix/of/output/files\n'
-    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -p prefix/of/output/files\n'
+    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
+    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
+    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
