@@ -37,10 +37,9 @@ import argparse
 import shutil
 
 
-
-import tk
-from paf import *
-from split_alleles import *
+from NanoRepeat import tk
+from NanoRepeat.paf import *
+from NanoRepeat.split_alleles import *
 
 class Repeat:
     def __init__(self):

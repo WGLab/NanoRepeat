@@ -35,10 +35,10 @@ from sklearn.mixture import GaussianMixture
 
 from typing import List
 
-import tk
-from repeat_region import *
-from paf import *
-from split_alleles import *
+from NanoRepeat import tk
+from NanoRepeat.repeat_region import *
+from NanoRepeat.paf import *
+from NanoRepeat.split_alleles import *
 
 class Metainfo:
     def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):

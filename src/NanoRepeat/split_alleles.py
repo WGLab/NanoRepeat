@@ -40,7 +40,7 @@ from matplotlib.colors import Normalize
 from matplotlib import cm
 matplotlib.rcParams['font.family'] = "sans-serif"
 
-import tk
+from NanoRepeat import tk
 
 class Allele:
     def __init__(self):

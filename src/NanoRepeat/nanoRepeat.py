@@ -32,9 +32,9 @@ import time
 import argparse
 from argparse import RawTextHelpFormatter
 
-import nanoRepeat_bam
-import tk
-from repeat_region import *
+from NanoRepeat import nanoRepeat_bam
+from NanoRepeat import tk
+from NanoRepeat.repeat_region import *
 
 def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
     

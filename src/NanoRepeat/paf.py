@@ -27,7 +27,8 @@ SOFTWARE.
 
 import os
 import sys
-import tk
+from NanoRepeat import tk
+
 class PAF:
     def __init__(self, col_list):
         if len(col_list) < 12:
