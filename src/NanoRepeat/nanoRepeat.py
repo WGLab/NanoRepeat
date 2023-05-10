@@ -111,7 +111,7 @@ def main():
     parser.add_argument('-o', '--out_prefix', required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files')
     
     # optional
-    parser.add_argument('-d', '--data_type', required = False, metavar = 'data_type',  type = str, default = '', help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
+    parser.add_argument('-d', '--data_type', required = False, metavar = 'data_type',  type = str, default = 'ont', help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
     parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
@@ -135,7 +135,7 @@ def main():
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
-    if input_args.data_type not in ['', 'ont', 'ont_sup', 'ont_q20', 'clr', 'hifi']:
+    if input_args.data_type not in ['ont', 'ont_sup', 'ont_q20', 'clr', 'hifi']:
         tk.eprint(f'ERROR! data_type should be one of the following: ont, ont_sup, clr, hifi\n')
         tk.eprint(f'ont:     Oxford Nanopore sequencing, NOT Super Accuracy mode\n')
         tk.eprint(f'ont_sup: Oxford Nanopore sequencing, Super Accuracy mode\n')
