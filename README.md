@@ -167,7 +167,7 @@ Sometimes two STRs are next to each other. For example, in exon-1 of the human H
 We will demonstrate the joint quantification using the same example dataset (described in the above section). If you have not downloaded the dataset, you can execute following commands. 
 
 ```
-wget https://github.com/WGLab/NanoRepeat/releases/download/v1.2/NanoRepeat_v1.2_example_data.tar.bz2
+wget https://github.com/WGLab/NanoRepeat/releases/download/v1.3/NanoRepeat_v1.3_example_data.tar.bz2
 tar xjf NanoRepeat_v1.3_example_data.tar.bz2
 ```
 
@@ -180,8 +180,8 @@ The reference fasta file is here: `./NanoRepeat_v1.2_example_data/HTT_amplicon/G
 You can use the following command to run `NanoRepeat-joint`:
 ```
 nanoRepeat-joint.py  \
-    -i ./NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz \
-    -r ./NanoRepeat_v1.2_example_data/HTT_amplicon/GRCh38_chr4.0_4Mb.fasta \
+    -i ./NanoRepeat_v1.3_example_data/HTT_amplicon/HTT_amplicon.fastq.gz \
+    -r ./NanoRepeat_v1.3_example_data/HTT_amplicon/GRCh38_chr4.0_4Mb.fasta \
     -1 chr4:3074876:3074933:CAG:200      \
     -2 chr4:3074946:3074966:CCG:20       \
     -o ./joint_quantification_output/HTT \
