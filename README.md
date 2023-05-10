@@ -280,12 +280,11 @@ BibTeX format:
 	author = {Li Fang and Alex Mas Monteys and Alexandra Dürr and Megan Keiser and Congsheng Cheng and Akhil Harapanahalli and Pedro Gonzalez-Alegre and Beverly L. Davidson and Kai Wang},
 	keywords = {Huntington’s disease, long-read sequencing, CRISPR, SNP, repeat detection}
 }
+
 ```
 ## Limitation
-a) NanoRepeat assumes that the seqeunce between `start_position` and `end_position` are all repeat sequences of the given motif. There should not be non-repeat sequences between `start_position` and `end_position`.
-
-b) because of a), NanoRepeat cannot handle mixed repeats of different motifs (i.e. a mixture of `GCCA` and `AAATT`), but imperfect repeats of approximately the same motif are OK. 
+NanoRepeat can accuratly quantify simple repeats but cannot handle mixed repeats of different motifs (i.e. a mixture of `GCCA` and `AAATT`), but imperfect repeats of approximately the same motif are OK. 
 
 ## Contact Us
 
-If you need any help from us, you are welcome to raise an issue at the issue page. You can also contact the first author (fangli2718@gmail.com) or the last author of the paper (wangk@chop.edu).
+If you need any help from us, you are welcome to raise an issue at the issue page. You can also contact the Dr. Li Fang (fangli9@sysu.edu.cn) or Dr. Kai Wang (wangk@chop.edu).

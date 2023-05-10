@@ -9,7 +9,7 @@ setup(
     description='NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data',
     url='https://github.com/WGLab/NanoRepeat',
     author='Li Fang, Kai Wang',
-    author_email='fangli80@foxmail.com',
+    author_email='fangli9@sysu.edu.cn',
     license='MIT',
     packages = find_packages("src"),
     package_dir = {"": "src"},
