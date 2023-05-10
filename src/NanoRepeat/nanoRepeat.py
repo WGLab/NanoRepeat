@@ -35,6 +35,7 @@ from argparse import RawTextHelpFormatter
 from NanoRepeat import nanoRepeat_bam
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
+from NanoRepeat import __init__
 
 def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
     
@@ -96,9 +97,22 @@ def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t1) python {program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
-    examples += f'\t2) python {program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
-    examples += f'\t3) python {program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n'
+    examples += f'\t# Input is a BAM file:\n'
+    examples += f'\t{program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# Input is a FASTQ file:\n'
+    examples += f'\t{program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# Input is a FASTA file:\n'
+    examples += f'\t{program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    
+    examples += f'\t# For ONT reads basecalled with super accuracy mode:\n'
+    examples += f'\t{program} -i input.bam   -t bam -d ont_sup -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# For ONT Q20+ reads\n'
+    examples += f'\t{program} -i input.bam   -t bam -d ont_q20 -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# For PacBio HiFi reads:\n'
+    examples += f'\t{program} -i input.bam   -t bam -d hifi    -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# For PacBio CLR reads:\n'
+    examples += f'\t{program} -i input.bam   -t bam -d clr     -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\nContact: Li Fang (fangli9@sysu.edu.cn)\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
@@ -120,9 +134,6 @@ def main():
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.15,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
-
-    ### Version
-    parser.add_argument('-v', '--version',      action='version', version= f'NanoRepeat {tk.Version}')
     
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
         input_args = parser.parse_args(['--help'])

@@ -5,7 +5,7 @@ with open('README.md') as f:
     
 setup(
     name='NanoRepeat',
-    version='1.4.1',
+    version='1.4.2',
     description='NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data',
     url='https://github.com/WGLab/NanoRepeat',
     author='Li Fang, Kai Wang',
