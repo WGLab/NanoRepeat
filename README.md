@@ -59,10 +59,10 @@ You can use the following command to run NanoRepeat:
 
 ```
 nanoRepeat.py \
-    -i path/to/NanoRepeat_v1.2_example_data/HG002/hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam \
+    -i path/to/NanoRepeat_v1.3_example_data/HG002/hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam \
     -t bam \
-    -r path/to/NanoRepeat_v1.2_example_data/HG002/GRCh37_chr1.fasta \
-    -b path/to/NanoRepeat_v1.2_example_data/HG002/HG002_GRCh37_example_regions.bed \
+    -r path/to/NanoRepeat_v1.3_example_data/HG002/GRCh37_chr1.fasta \
+    -b path/to/NanoRepeat_v1.3_example_data/HG002/HG002_GRCh37_example_regions.bed \
     -c 4 \
     --samtools path/to/samtools \
     --minimap2 path/to/minimap2 \
@@ -167,8 +167,8 @@ Sometimes two STRs are next to each other. For example, in exon-1 of the human H
 We will demonstrate the joint quantification using the same example dataset (described in the above section). If you have not downloaded the dataset, you can execute following commands. 
 
 ```
-wget https://github.com/WGLab/NanoRepeat/releases/download/v1.2/NanoRepeat_v1.2_example_data.tar.gz
-tar xzf NanoRepeat_v1.2_example_data.tar.gz
+wget https://github.com/WGLab/NanoRepeat/releases/download/v1.2/NanoRepeat_v1.2_example_data.tar.bz2
+tar xjf NanoRepeat_v1.3_example_data.tar.bz2
 ```
 
 After unzipping the file, you will see a `NanoRepeat_v1.2_example_data` folder and there are two subfolders: `HG002` and `HTT_amplicon`. In this section, we will use the data under the `HTT_amplicon` folder. 
@@ -181,7 +181,7 @@ You can use the following command to run `NanoRepeat-joint`:
 ```
 nanoRepeat-joint.py  \
     -i ./NanoRepeat_v1.2_example_data/HTT_amplicon/HTT_amplicon.fastq.gz \
-    -r ./NanoRepeat_v1.0_example_data/GRCh38_chr4.0_4Mb.fasta \
+    -r ./NanoRepeat_v1.2_example_data/HTT_amplicon/GRCh38_chr4.0_4Mb.fasta \
     -1 chr4:3074876:3074933:CAG:200      \
     -2 chr4:3074946:3074966:CCG:20       \
     -o ./joint_quantification_output/HTT \

@@ -504,9 +504,9 @@ def get_preset_for_minimap2(data_type):
     if data_type == 'ont':
         preset = ' -x map-ont '
     elif data_type == 'ont_sup':
-        preset = ' -x map-ont '
+        preset = ' -x map-ont -A 2 -B 6 '
     elif data_type == 'ont_q20':
-        preset = ' -x asm20 '
+        preset = ' -x map-ont -A 2 -B 8 '
     elif data_type == 'clr':
         preset = ' -x map-pb '
     elif data_type == 'hifi':
