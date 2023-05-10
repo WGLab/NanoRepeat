@@ -287,4 +287,4 @@ NanoRepeat can accuratly quantify simple repeats but cannot handle mixed repeats
 
 ## Contact Us
 
-If you need any help from us, you are welcome to raise an issue at the issue page. You can also contact the Dr. Li Fang (fangli9@sysu.edu.cn) or Dr. Kai Wang (wangk@chop.edu).
+If you need any help from us, you are welcome to raise an issue at the issue page. You can also contact Dr. Li Fang (fangli9@sysu.edu.cn) or Dr. Kai Wang (wangk@chop.edu).
