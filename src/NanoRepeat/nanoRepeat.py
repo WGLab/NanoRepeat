@@ -36,7 +36,7 @@ from NanoRepeat import nanoRepeat_bam
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
 
-def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
+def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
     
     sam_file        = f'{bam_prefix}.sam'
     bam_file        = f'{bam_prefix}.bam'
@@ -53,7 +53,8 @@ def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, n
 
     sleep_time = 5
 
-    cmd = f'{minimap2} -ax map-ont -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
+    preset = tk.get_preset_for_minimap2(data_type)
+    cmd = f'{minimap2} {preset} -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
     time.sleep(sleep_time)
 
@@ -86,7 +87,7 @@ def map_fastq_to_ref_genome(in_fastq_file, ref_fasta_file, samtools, minimap2, n
 def preprocess_fastq(input_args):
     
     bam_prefix    =  f'{input_args.out_prefix}.minimap2'
-    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
+    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.data_type, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
     
     nanoRepeat_bam.nanoRepeat_bam(input_args, in_bam_file)
     return
@@ -105,16 +106,17 @@ def main():
     parser.add_argument('-i', '--input', required = True, metavar = 'input_file', type = str, help = '(required) path to input file (supported format: sorted_bam, fastq or fasta)')
     parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
     parser.add_argument('-r', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
+    
     parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to the repeat region file (tab delimited text file with 4 columns: chrom start end repeat_unit_seq. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive)')
     parser.add_argument('-o', '--out_prefix', required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files')
     
-    # optional 
+    # optional
+    parser.add_argument('-d', '--data_type', required = False, metavar = 'data_type',  type = str, default = '', help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
     parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
     parser.add_argument('--ploidy',   required = False, metavar = 'INT', type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
     parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 1000 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
-    parser.add_argument('--error_rate',   required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'sequencing error rate (default: 0.1)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.15,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
@@ -128,18 +130,24 @@ def main():
         input_args = parser.parse_args()
 
     input_args.type = input_args.type.lower()
+    
     if input_args.type not in ['bam', 'fastq', 'fasta']:
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
+    if input_args.data_type not in ['', 'ont', 'ont_sup', 'ont_q20', 'clr', 'hifi']:
+        tk.eprint(f'ERROR! data_type should be one of the following: ont, ont_sup, clr, hifi\n')
+        tk.eprint(f'ont:     Oxford Nanopore sequencing, NOT Super Accuracy mode\n')
+        tk.eprint(f'ont_sup: Oxford Nanopore sequencing, Super Accuracy mode\n')
+        tk.eprint(f'ont_q20: Oxford Nanopore sequencing, Q20+ chemistry\n')
+        tk.eprint(f'clr:     PacBio sequencing, Continuous Long Reads (CLR)\n')
+        tk.eprint(f'hifi:    PacBio sequencing, HiFi/CCS reads\n')
+        sys.exit(1)
+        
     if input_args.ploidy < 1:
         tk.eprint(f'ERROR! ploidy should be at least 1')
         sys.exit(1)
 
-    if input_args.error_rate >= 1.0:
-        tk.eprint('ERROR! --error_rate must be < 1\n')
-        sys.exit(1)
-    
     if input_args.max_mutual_overlap >= 1.0:
         tk.eprint('ERROR! --max_mutual_overlap must be < 1\n')
         sys.exit(1)

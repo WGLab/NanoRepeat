@@ -334,7 +334,7 @@ def find_anchor_locations_from_paf(repeat_region: RepeatRegion, anchor_locations
 
     return
 
-def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
+def find_anchor_locations_in_reads(minimap2:string, data_type:string, repeat_region:RepeatRegion, num_cpu:int):
 
     left_template_seq    = repeat_region.left_anchor_seq
     left_template_name   = 'left_anchor'
@@ -355,8 +355,8 @@ def find_anchor_locations_in_reads(minimap2:string, repeat_region:RepeatRegion, 
     anchor_locations_paf_file = os.path.join(repeat_region.temp_out_dir, 'anchor_locations.paf')
     repeat_region.temp_file_list.append(anchor_locations_paf_file)
 
-    preset = tk.get_preset_for_minimap2('ont')
-    cmd = f'{minimap2} -c -t {num_cpu} -x {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
+    preset = tk.get_preset_for_minimap2(data_type)
+    cmd = f'{minimap2} -c -t {num_cpu} {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
     tk.eprint(f'NOTICE: Running command: {cmd}')
     tk.run_system_cmd(cmd)
 
@@ -409,7 +409,7 @@ def make_core_seq_fastq(repeat_region: RepeatRegion):
     return
 
 
-def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, num_cpu: int):
+def round1_and_round2_estimation(minimap2:string, data_type:string, repeat_region: RepeatRegion, num_cpu: int):
 
     if len(repeat_region.read_dict) == 0: return
 
@@ -434,8 +434,9 @@ def round1_and_round2_estimation(minimap2: string, repeat_region: RepeatRegion, 
 
     round1_paf_file = os.path.join(repeat_region.temp_out_dir, 'round1.paf')
     repeat_region.temp_file_list.append(round1_paf_file)
-    minimap2_parameters = ' -x map-ont '
-    cmd = f'{minimap2} -c -t {num_cpu} {minimap2_parameters} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
+    
+    preset = tk.get_preset_for_minimap2(data_type)
+    cmd = f'{minimap2} -c -t {num_cpu} {preset} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
     
     tk.eprint(f'NOTICE: Running command: {cmd}')
     tk.run_system_cmd(cmd)
@@ -507,7 +508,7 @@ def round3_estimation_from_paf(repeat_region: RepeatRegion, round3_paf_file):
     
     return 
 
-def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
+def round3_estimation(minimap2:string, data_type, repeat_region:RepeatRegion, num_cpu:int):
     
     estimated_repeat_size_list = []
     for read_name in repeat_region.read_dict:
@@ -538,8 +539,8 @@ def round3_estimation(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
     round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
     repeat_region.temp_file_list.append(round3_paf_file)
 
-    minimap2_parameters = ' -x map-ont '
-    cmd = f'{minimap2} {minimap2_parameters} -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
+    preset = tk.get_preset_for_minimap2(data_type)
+    cmd = f'{minimap2} {preset} -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
 
     round3_estimation_from_paf(repeat_region, round3_paf_file)
@@ -623,7 +624,7 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
 
     return
     
-def quantify1repeat_from_bam(input_args, in_bam_file:string, ref_fasta_dict:dict, repeat_region:RepeatRegion):
+def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fasta_dict:dict, repeat_region:RepeatRegion):
 
     temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_dir.{repeat_region.to_outfile_prefix()}'
     os.makedirs(temp_out_dir, exist_ok=True)
@@ -653,31 +654,45 @@ def quantify1repeat_from_bam(input_args, in_bam_file:string, ref_fasta_dict:dict
         return
     
     tk.eprint('NOTICE: Step 1: finding anchor location in reads')
-    status = find_anchor_locations_in_reads(input_args.minimap2, repeat_region, input_args.num_cpu)
+    status = find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: Step 1 finished')
 
     # make core sequence fastq
     make_core_seq_fastq(repeat_region)
 
     tk.eprint('NOTICE: Step 2: round 1 and round 2 estimation')
-    round1_and_round2_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
+    round1_and_round2_estimation(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: Step 2 finished')
 
     tk.eprint('NOTICE: Step 3: round 3 estimation')
-    round3_estimation(input_args.minimap2, repeat_region, input_args.num_cpu)
+    round3_estimation(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: Step 3 finished')
 
     tk.eprint('NOTICE: Writing to repeat size file...')
     output_repeat_size_1d(repeat_region)
 
     tk.eprint('NOTICE: Step 4: phasing reads using GMM')
-    split_allele_using_gmm_1d(repeat_region, input_args.ploidy, input_args.error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
+    split_allele_using_gmm_1d(repeat_region, input_args.ploidy, error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
     
     shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
 def nanoRepeat_bam (input_args, in_bam_file:string):
+    
+    # ont, ont_sup, ont_q20, clr, hifi
+
+    if input_args.data_type == 'ont' or 'clr':
+        error_rate = 0.14
+    elif input_args.data_type == 'ont_sup':
+        error_rate = 0.07
+    elif input_args.data_type == 'ont_q20':
+        error_rate = 0.04
+    elif input_args.data_type == 'hifi':
+        error_rate = 0.02
+    else:
+        tk.eprint(f'ERROR! unknown data type: {input_args.data_type}')
+        sys.exit(1)
     
     tk.eprint(f'NOTICE: Reading repeat region file: {input_args.repeat_region_bed}')
     repeat_region_list = read_repeat_region_file(input_args.repeat_region_bed)
@@ -687,7 +702,7 @@ def nanoRepeat_bam (input_args, in_bam_file:string):
     
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_outfile_prefix()}')
-        quantify1repeat_from_bam(input_args, in_bam_file, ref_fasta_dict, repeat_region)
+        quantify1repeat_from_bam(input_args, error_rate, in_bam_file, ref_fasta_dict, repeat_region)
 
     tk.eprint('NOTICE: Program finished.')
 

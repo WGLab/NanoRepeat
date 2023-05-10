@@ -500,16 +500,21 @@ def target_region_alignment_stats_from_cigar(cigar, tstart, tend, ref_region_sta
     read_error = ReadError(num_match, num_mismatch, num_ins, num_del, align_score)
     return read_error
 
-def get_preset_for_minimap2(platform):
-    if platform == 'ont':
-        preset = 'map-ont'
-    elif platform == 'pacbio':
-        preset = 'map-pb'
-    elif platform == 'consensus':
-        preset = 'asm20'
+def get_preset_for_minimap2(data_type):
+    if data_type == 'ont':
+        preset = ' -x map-ont '
+    elif data_type == 'ont_sup':
+        preset = ' -x map-ont '
+    elif data_type == 'ont_q20':
+        preset = ' -x asm20 '
+    elif data_type == 'clr':
+        preset = ' -x map-pb '
+    elif data_type == 'hifi':
+        preset = ' -x map-hifi '
     else:
-        eprint('ERROR: Unknown platform: %s\n' % platform)
-        sys.exit()
+        eprint(f'ERROR: Unknown data type: {data_type}\n')
+        sys.exit(1)
+    
     return preset
 
 minimap2_mid_para   = ' -k 5 -w 3 -n 1 -m 10 -s 40 '
