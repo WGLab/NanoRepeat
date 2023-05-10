@@ -1,7 +1,7 @@
 # NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data
 
 [![PyPI version](https://badge.fury.io/py/NanoRepeat.svg)](https://badge.fury.io/py/NanoRepeat)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7024485.svg)](https://doi.org/10.5281/zenodo.7024485)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7919607.svg)](https://doi.org/10.5281/zenodo.7919607)
 
 ## Table of Contents
 
