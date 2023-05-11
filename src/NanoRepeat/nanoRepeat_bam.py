@@ -152,9 +152,13 @@ def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion):
     write_seq_to_fasta(f'mid_ref_seq_{repeat_region_location}', mid_ref_seq, mid_ref_seq_file)
     write_seq_to_fasta('pure_repeat_seq', pure_repeat_seq, pure_repeat_seq_file)
 
-    score_parameters = '-A1 -B4 -O6,26 -E2,1 -z30' 
-    cmd = f'{minimap2} {score_parameters} -k3 -w2 -m3 -n1 -s3 -f 10000 --cs  {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file} 2> /dev/null'
-    tk.eprint(f'NOTICE: Running command: {cmd}')
+    if mid_ref_seq_len > 100:
+        score_parameters = '-x ava-ont -z30 -m1 -n2 -s1' 
+    else:
+        score_parameters = '-x ava-ont -z30 -k3 -w2 -m1 -n2 -s1'
+
+    cmd = f'{minimap2} {score_parameters} -f 100000 --cs  {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file} 2> /dev/null'
+    tk.eprint(f'NOTICE: Running command: {cmd}')  
     tk.run_system_cmd(cmd)
 
     ref_check_paf_f = open(ref_check_paf_file, 'r')
