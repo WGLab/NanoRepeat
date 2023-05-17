@@ -18,20 +18,27 @@
 #### Prerequisites:
 
 1. [Python](https://www.python.org/downloads/) (version >= 3.8)
-2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.8)
-3. [Samtools](https://github.com/samtools/samtools.git) (version >= 1.3)
+2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.22)
+3. [Samtools](https://github.com/samtools/samtools.git) (version >= 1.13)
 
-You may alreadly have `minimap2` and `samtools` if you performed analysis of Oxford Nanopore sequencing data. You can use `which minimap2` and `which samtools` to check the full path to the two executable files.
+You may alreadly have `minimap2` and `samtools` if you performed analysis of Oxford Nanopore sequencing data. You can use `which minimap2` and `which samtools` to check the full path to the two executable files. Please note that `minimap2` should be v2.22 or later. 
 
-Once you installed the above tools, you can use the following commands to install NanoRepeat:
+Once you installed the above tools, you can use the following commands to install NanoRepeat (we recommend creating an new conda environment to avoid dependency issues):
+
 ```
-pip install NanoRepeat
-```
-or
-```
+conda create -n nanorepeat python=3.8
+conda activate nanorepeat
 git clone https://github.com/WGLab/NanoRepeat.git
 cd NanoRepeat
 pip install .
+```
+
+If you want to install a stable version from Python Package Index (PyPI): 
+
+```
+conda create -n nanorepeat python=3.8
+conda activate nanorepeat
+pip install NanoRepeat
 ```
 
 ## Usage
@@ -62,6 +69,7 @@ You can use the following command to run NanoRepeat:
 nanoRepeat.py \
     -i path/to/NanoRepeat_v1.3_example_data/HG002/hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam \
     -t bam \
+    -d ont_q20 \
     -r path/to/NanoRepeat_v1.3_example_data/HG002/GRCh37_chr1.fasta \
     -b path/to/NanoRepeat_v1.3_example_data/HG002/HG002_GRCh37_example_regions.bed \
     -c 4 \
@@ -72,7 +80,9 @@ nanoRepeat.py \
 
 `-i` specifies the input file, which can be in `fasta`, `fastq` or `bam` format. In this case our input file is `hg002_Q20.20210805_3flowcells.hs37d5.example_regions.bam`. It is a subset of an Oxford Nanopore whole-genome sequencing dataset of the [NIST/GIAB HG002 (GM24385/NA24385)](https://catalog.coriell.org/0/Sections/Search/Sample_Detail.aspx?Ref=NA24385&Product=DNA) genome. The sequencing data was from the [Oxford Nanopore Technologies Benchmark Datasets](https://registry.opendata.aws/ont-open-data/) and reads from 15 example STR regions in `chr1` were extracted. These regions were selected because they overlap with the [HG002 SV benchmark set](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/NIST_SVs_Integration_v0.6/HG002_SVs_Tier1_v0.6.vcf.gz) and are heterozygous (i.e., two alleles have different repeat sizes). 
 
-`-t` specifies the input file type. There are three valid values: bam, fastq or fasta. In this case the input file is in a bam file. 
+`-t` specifies the input file type. There are four valid values: bam, cram, fastq or fasta. In this case the input file is in a bam file. 
+
+`-d` specifies the data type. There are five valid values: `ont_q20`, `ont_sup`, `ont`, `hifi`, and `clr`. `ont_q20` is for Oxford Nanopore sequencing with Q20+ chemistry. `ont_sup` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in super accuracy mode. `ont` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in fast mode or high accuracy mode. `hifi` is for PacBio HiFi/CCS reads. `clr` is for PacBio Continuous Long Reads (CLR) reads. Default value: `ont`.
 
 `-r` specifies the reference genome file in `FASTA` format. In this case, `GRCh37_chr1.fasta` is chr1 of the GRCh37/hg19 reference genome. We used GRCh37 instead of GRCh38 because the HG002 SV benchmark set is based on GRCh37. 
 

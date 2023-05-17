@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020- Children's Hospital of Philadelphia
+Copyright (c) 2020-2023 Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
               
 Permission is hereby granted, free of charge, to any person obtaining
@@ -112,13 +112,14 @@ def main():
     examples += f'\t{program} -i input.bam   -t bam -d hifi    -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     examples += f'\t# For PacBio CLR reads:\n'
     examples += f'\t{program} -i input.bam   -t bam -d clr     -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    
     examples += f'\nContact: Li Fang (fangli9@sysu.edu.cn)\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
     # required
     parser.add_argument('-i', '--input', required = True, metavar = 'input_file', type = str, help = '(required) path to input file (supported format: sorted_bam, fastq or fasta)')
-    parser.add_argument('-t', '--type', required = True, metavar = 'input_type', type = str, help = '(required) input file type (valid values: bam, fastq or fasta)')
+    parser.add_argument('-t', '--type', required = True, metavar = 'input_file_type', type = str, help = '(required) input file type (valid values: bam, cram, fastq or fasta)')
     parser.add_argument('-r', '--ref_fasta', required = True, metavar = 'ref.fasta',   type = str, help = '(required) path to reference genome sequence in FASTA format')
     
     parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to the repeat region file (tab delimited text file with 4 columns: chrom start end repeat_unit_seq. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive)')
@@ -133,6 +134,7 @@ def main():
     parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 1000 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.15,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
+    parser.add_argument('--save_temp_files', required = False, action='store_true', help = 'save temporary alignment files')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
     
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
@@ -142,7 +144,7 @@ def main():
 
     input_args.type = input_args.type.lower()
     
-    if input_args.type not in ['bam', 'fastq', 'fasta']:
+    if input_args.type not in ['bam', 'cram', 'fastq', 'fasta']:
         tk.eprint(f'ERROR! unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
         sys.exit(1)
     
@@ -191,10 +193,10 @@ def main():
         preprocess_fastq(input_args)
     elif input_args.type == 'fasta':
         preprocess_fastq(input_args)
-    elif input_args.type == 'bam':
+    elif input_args.type == 'bam' or input_args.type == 'cram':
         nanoRepeat_bam.nanoRepeat_bam(input_args, input_args.input)
     else:
-        tk.eprint(f'ERROR! Unknown input type: {input_args.type} valid values are: bam, fastq, fasta')
+        tk.eprint(f'ERROR! Unknown input type: {input_args.type} valid values are: bam, cram, fastq, fasta')
         sys.exit(1)
     
     return

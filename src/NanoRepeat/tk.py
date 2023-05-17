@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020- Children's Hospital of Philadelphia
+Copyright (c) 2020-2023 Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -96,7 +96,6 @@ def check_output_file_exists(out_file):
 
 def eprint(message):
     sys.stderr.write('[' + datetime.now().strftime(TimeFormat) + '] ' + message + '\n')
-
     return
 
 def get_file_prefix(input_file):
@@ -503,13 +502,13 @@ def get_preset_for_minimap2(data_type):
     if data_type == 'ont':
         preset = ' -x map-ont '
     elif data_type == 'ont_sup':
-        preset = ' -x map-ont -A 2 -B 6 '
+        preset = ' -x map-ont '
     elif data_type == 'ont_q20':
-        preset = ' -x map-ont -A 2 -B 8 '
+        preset = ' -x map-ont '
     elif data_type == 'clr':
-        preset = ' -x map-pb '
+        preset = ' -x map-ont '
     elif data_type == 'hifi':
-        preset = ' -x map-hifi '
+        preset = ' -x map-ont '
     else:
         eprint(f'ERROR: Unknown data type: {data_type}\n')
         sys.exit(1)
@@ -527,7 +526,7 @@ def switch_two_objects(a, b):
     return b, a
 
 def run_system_cmd(cmd):
-
+    eprint(f'NOTICE: Running command: {cmd}')  
     ret = os.system(cmd)
     if ret != 0: 
         eprint('ERROR: Failed to run command: %s' % cmd)

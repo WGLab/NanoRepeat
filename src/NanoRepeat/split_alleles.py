@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020- Children's Hospital of Philadelphia
+Copyright (c) 2020-2023 Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -25,6 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import os
 import sys
 import random
 import numpy as np
@@ -73,10 +74,9 @@ class Readinfo:
         self.confidence = 1
 
 def simulate_reads(read_repeat_count_list, error_rate):
-    min_std = 1.0
     simulated_read_repeat_count_list = read_repeat_count_list * 100
     for i in range(0, len(simulated_read_repeat_count_list)):
-        std = min_std + 1.25 * error_rate/3.0 * simulated_read_repeat_count_list[i]
+        std = error_rate * (10 + simulated_read_repeat_count_list[i])
         random_error = random.gauss(0, std)
         simulated_read_repeat_count_list[i] += random_error
     return simulated_read_repeat_count_list
@@ -461,11 +461,11 @@ def output_summary_file_1d(allele_list, repeat_id, num_removed_reads, out_prefix
 
     num_alleles = len(allele_list)
     out_summray_file = out_prefix + '.summary.txt'
+    filebasename = os.path.split(out_summray_file)[1]
     out_summray_f = open(out_summray_file, 'w')
-    summary_info  = f'Repeat_Region={repeat_id}'
+    summary_info  = f'Summary_file={filebasename}\tRepeat_Region={repeat_id}'
     summary_info += f'\tMethod=GMM'
     summary_info += f'\tNum_Alleles={num_alleles}'
-
     summary_info += f'\tNum_Removed_Reads={num_removed_reads}'
 
     for label in range(0, num_alleles):

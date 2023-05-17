@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020- Children's Hospital of Philadelphia
+Copyright (c) 2020-2023 Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
               
 Permission is hereby granted, free of charge, to any person obtaining
@@ -152,13 +152,9 @@ def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion):
     write_seq_to_fasta(f'mid_ref_seq_{repeat_region_location}', mid_ref_seq, mid_ref_seq_file)
     write_seq_to_fasta('pure_repeat_seq', pure_repeat_seq, pure_repeat_seq_file)
 
-    if mid_ref_seq_len > 100:
-        score_parameters = '-x ava-ont -z30 -m1 -n2 -s1' 
-    else:
-        score_parameters = '-x ava-ont -z30 -k3 -w2 -m1 -n2 -s1'
+    score_parameters = '-x ava-ont -z30 -k3 -w2 -m1 -n2 -s10'
 
-    cmd = f'{minimap2} {score_parameters} -f 100000 --cs  {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file} 2> /dev/null'
-    tk.eprint(f'NOTICE: Running command: {cmd}')  
+    cmd = f'{minimap2} {score_parameters} -f 0 --cs  {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file}'
     tk.run_system_cmd(cmd)
 
     ref_check_paf_f = open(ref_check_paf_file, 'r')
@@ -360,8 +356,7 @@ def find_anchor_locations_in_reads(minimap2:string, data_type:string, repeat_reg
     repeat_region.temp_file_list.append(anchor_locations_paf_file)
 
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} -c -t {num_cpu} {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file} 2> /dev/null'
-    tk.eprint(f'NOTICE: Running command: {cmd}')
+    cmd = f'{minimap2} -c -t {num_cpu} {preset} {template_fasta_file} {repeat_region.region_fq_file} > {anchor_locations_paf_file}'
     tk.run_system_cmd(cmd)
 
     find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_file)
@@ -440,9 +435,7 @@ def round1_and_round2_estimation(minimap2:string, data_type:string, repeat_regio
     repeat_region.temp_file_list.append(round1_paf_file)
     
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} -c -t {num_cpu} {preset} {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file} 2> /dev/null'
-    
-    tk.eprint(f'NOTICE: Running command: {cmd}')
+    cmd = f'{minimap2} -c -t {num_cpu} {preset} -f 0.0 {round1_fasta_file} {repeat_region.core_seq_fq_file} > {round1_paf_file}'
     tk.run_system_cmd(cmd)
     round1_paf_f = open(round1_paf_file, 'r')
     lines = list(round1_paf_f)
@@ -544,7 +537,7 @@ def round3_estimation(minimap2:string, data_type, repeat_region:RepeatRegion, nu
     repeat_region.temp_file_list.append(round3_paf_file)
 
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} {preset} -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file} 2> /dev/null'
+    cmd = f'{minimap2} {preset} -f 0.0 -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file}'
     tk.run_system_cmd(cmd)
 
     round3_estimation_from_paf(repeat_region, round3_paf_file)
@@ -617,7 +610,6 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
     tk.eprint('NOTICE: Writing phasing results...')
     output_phasing_results_1d(allele_list, repeat_region.to_unique_id(), repeat_region.out_prefix)
     
-    tk.eprint('NOTICE: Writing to output fastq files...')
     output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_prefix)
 
     tk.eprint('NOTICE: Writing summary file...')
@@ -639,13 +631,21 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
 
     # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_outfile_prefix()}.fastq')
-    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=10)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file} 2> /dev/null'
+    region_bam_file = f'{repeat_region.out_prefix}.sorted.bam'
+    cmd = f'{input_args.samtools} view --reference {input_args.ref_fasta} -hb {in_bam_file} {repeat_region.to_invertal(flank_dist=repeat_region.anchor_len)} > {region_bam_file}'
+    tk.run_system_cmd(cmd)
+    
+    cmd = f'{input_args.samtools} index {region_bam_file}'
+    tk.run_system_cmd(cmd)
+    
+    cmd = f'{input_args.samtools} fastq {region_bam_file} > {repeat_region.region_fq_file}'
     tk.run_system_cmd(cmd)
 
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
     if fastq_file_size == 0:
         tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_outfile_prefix()}')
-        shutil.rmtree(repeat_region.temp_out_dir)
+        if input_args.save_temp_files == False: 
+            shutil.rmtree(repeat_region.temp_out_dir)
         return
 
     # extract ref sequence
@@ -654,11 +654,12 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
     refine_repeat_region_in_ref(input_args.minimap2, repeat_region)
     
     if repeat_region.ref_has_issue == True: 
-        shutil.rmtree(repeat_region.temp_out_dir)
+        if input_args.save_temp_files == False: 
+            shutil.rmtree(repeat_region.temp_out_dir)
         return
     
     tk.eprint('NOTICE: Step 1: finding anchor location in reads')
-    status = find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
+    find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: Step 1 finished')
 
     # make core sequence fastq
@@ -678,7 +679,8 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
     tk.eprint('NOTICE: Step 4: phasing reads using GMM')
     split_allele_using_gmm_1d(repeat_region, input_args.ploidy, error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
     
-    shutil.rmtree(repeat_region.temp_out_dir)
+    if input_args.save_temp_files == False:
+        shutil.rmtree(repeat_region.temp_out_dir)
 
     return
 
@@ -687,11 +689,11 @@ def nanoRepeat_bam (input_args, in_bam_file:string):
     # ont, ont_sup, ont_q20, clr, hifi
 
     if input_args.data_type == 'ont' or 'clr':
-        error_rate = 0.14
-    elif input_args.data_type == 'ont_sup':
         error_rate = 0.07
-    elif input_args.data_type == 'ont_q20':
+    elif input_args.data_type == 'ont_sup':
         error_rate = 0.04
+    elif input_args.data_type == 'ont_q20':
+        error_rate = 0.03
     elif input_args.data_type == 'hifi':
         error_rate = 0.02
     else:

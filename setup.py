@@ -5,7 +5,7 @@ with open('README.md') as f:
     
 setup(
     name='NanoRepeat',
-    version='1.4.0',
+    version='1.4.1',
     description='NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data',
     long_description = readme,
     long_description_content_type = 'text/markdown',
