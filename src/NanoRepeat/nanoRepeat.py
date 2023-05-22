@@ -55,7 +55,7 @@ def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, samtools, 
     sleep_time = 5
 
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} {preset} -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
+    cmd = f'{minimap2} -a {preset} -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
     time.sleep(sleep_time)
 
