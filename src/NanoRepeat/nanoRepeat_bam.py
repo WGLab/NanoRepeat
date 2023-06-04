@@ -524,7 +524,7 @@ def round3_estimation_from_paf(repeat_region: RepeatRegion, round3_paf_file):
     
     return 
 
-def round3_estimation(minimap2:string, data_type:string, repeat_region:RepeatRegion, num_cpu:int):
+def round3_estimation(minimap2:string, data_type:string, fast_mode, repeat_region:RepeatRegion, num_cpu:int):
     
     round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
     round3_paf_f = open(round3_paf_file, 'w')
@@ -533,7 +533,7 @@ def round3_estimation(minimap2:string, data_type:string, repeat_region:RepeatReg
     procs = []
 
     for proc_id in range(0, num_cpu):
-        proc = Process(target=round3_align_1process, args=(proc_id, num_cpu, repeat_region, data_type, minimap2))
+        proc = Process(target=round3_align_1process, args=(proc_id, num_cpu, fast_mode, repeat_region, data_type, minimap2))
         procs.append(proc)
         proc.start()
         
@@ -546,7 +546,7 @@ def round3_estimation(minimap2:string, data_type:string, repeat_region:RepeatReg
     
     round3_estimation_from_paf(repeat_region, round3_paf_file)
 
-def round3_align_1process(proc_id:int, num_cpu:int, repeat_region:RepeatRegion, data_type:string, minimap2:string):
+def round3_align_1process(proc_id:int, num_cpu:int, fast_mode, repeat_region:RepeatRegion, data_type:string, minimap2:string):
     
     read_id = -1
     out_paf_file = os.path.join(repeat_region.temp_out_dir, f'round3_align.process{proc_id}.paf')
@@ -562,6 +562,9 @@ def round3_align_1process(proc_id:int, num_cpu:int, repeat_region:RepeatRegion, 
         
         buffer = max(15, int(round2_repeat_size * 0.05))
         if buffer > 150: buffer = 150
+        
+        if fast_mode:
+            buffer = 15
         
         max_template_repeat_size = int(round2_repeat_size + buffer)
         min_template_repeat_size = int(round2_repeat_size - buffer)
@@ -720,7 +723,7 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
     tk.eprint('NOTICE: Step 2 finished')
 
     tk.eprint('NOTICE: Step 3: round 3 estimation')
-    round3_estimation(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
+    round3_estimation(input_args.minimap2, input_args.data_type, input_args.fast_mode, repeat_region, input_args.num_cpu)
     tk.eprint('NOTICE: Step 3 finished')
 
     tk.eprint('NOTICE: Writing to repeat size file...')
