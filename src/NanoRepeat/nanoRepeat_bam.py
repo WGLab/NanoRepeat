@@ -31,8 +31,7 @@ import string
 import sys
 import shutil
 import numpy as np
-from sklearn.mixture import GaussianMixture
-
+from multiprocessing import Process
 from typing import List
 
 from NanoRepeat import tk
@@ -391,6 +390,7 @@ def make_core_seq_fastq(repeat_region: RepeatRegion):
         core_sequence = read_sequence[repeat_region.read_dict[read_name].core_seq_start_pos:repeat_region.read_dict[read_name].core_seq_end_pos]
         mid_sequence = read_sequence[repeat_region.read_dict[read_name].mid_seq_start_pos:repeat_region.read_dict[read_name].mid_seq_end_pos]
 
+        repeat_region.read_core_seq_dict[read_name] = core_sequence
         core_seq_fq_f.write(line1)
         core_seq_fq_f.write(core_sequence + '\n')
         core_seq_fq_f.write(line3)
@@ -441,13 +441,32 @@ def round1_and_round2_estimation(minimap2:string, data_type:string, repeat_regio
     lines = list(round1_paf_f)
     round1_paf_f.close()
 
+
+    round2_repeat_size_dict = dict()
+    
     for line in lines:
         col_list = line.strip().split('\t')
         paf = PAF(col_list)
+
         if paf.tstart <= len(repeat_region.left_anchor_seq) and paf.tend >= len(repeat_region.left_anchor_seq):
             read_name = paf.qname
             round2_repeat_size = float(paf.tend - len(repeat_region.left_anchor_seq))/len(repeat_region.repeat_unit_seq)
-            repeat_region.read_dict[read_name].round2_repeat_size = round2_repeat_size
+            align_score = paf.align_score
+            if read_name not in round2_repeat_size_dict:
+                round2_repeat_size_dict[read_name] = []
+            round2_repeat_size_dict[read_name].append((align_score, round2_repeat_size))
+            
+    for read_name in round2_repeat_size_dict:
+        round2_repeat_size_dict[read_name].sort(key = lambda x:x[0], reverse=True)
+        round2_repeat_size = round2_repeat_size_dict[read_name][0][1]
+        repeat_region.read_dict[read_name].round2_repeat_size = round2_repeat_size
+
+    round2_repeat_size_file = os.path.join(repeat_region.temp_out_dir, 'round2_repeat_size.txt')
+    round2_repeat_size_f = open(round2_repeat_size_file, 'w')
+    for read_name in repeat_region.read_dict:
+        round2_repeat_size_f.write(f'{read_name}\t{repeat_region.read_dict[read_name].round2_repeat_size}\n')
+    
+    round2_repeat_size_f.close()
     
     return
 
@@ -505,43 +524,74 @@ def round3_estimation_from_paf(repeat_region: RepeatRegion, round3_paf_file):
     
     return 
 
-def round3_estimation(minimap2:string, data_type, repeat_region:RepeatRegion, num_cpu:int):
+def round3_estimation(minimap2:string, data_type:string, repeat_region:RepeatRegion, num_cpu:int):
     
-    estimated_repeat_size_list = []
+    round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
+    round3_paf_f = open(round3_paf_file, 'w')
+    round3_paf_f.close()
+    
+    procs = []
+
+    for proc_id in range(0, num_cpu):
+        proc = Process(target=round3_align_1process, args=(proc_id, num_cpu, repeat_region, data_type, minimap2))
+        procs.append(proc)
+        proc.start()
+        
+    for proc_id in range(0, num_cpu):
+        procs[proc_id].join()
+        proc_out_paf_file = os.path.join(repeat_region.temp_out_dir, f'round3_align.process{proc_id}.paf')
+        cmd = f'cat {proc_out_paf_file} >> {round3_paf_file}'
+        tk.run_system_cmd(cmd)
+        os.remove(proc_out_paf_file)
+    
+    round3_estimation_from_paf(repeat_region, round3_paf_file)
+
+def round3_align_1process(proc_id:int, num_cpu:int, repeat_region:RepeatRegion, data_type:string, minimap2:string):
+    
+    read_id = -1
+    out_paf_file = os.path.join(repeat_region.temp_out_dir, f'round3_align.process{proc_id}.paf')
+    out_paf_f = open(out_paf_file, 'w')
+    out_paf_f.close()
+    
     for read_name in repeat_region.read_dict:
         read = repeat_region.read_dict[read_name]
-        if read.round2_repeat_size != None:
-            estimated_repeat_size_list.append(read.round2_repeat_size)
-    if len(estimated_repeat_size_list) == 0: return
-    max_template_repeat_size = int(max(estimated_repeat_size_list) * 1.5) + 1
-    min_template_repeat_size = int(min(estimated_repeat_size_list) / 2)
+        round2_repeat_size = read.round2_repeat_size
+        if round2_repeat_size == None: continue
+        read_id += 1
+        if read_id % num_cpu != proc_id: continue
+        
+        buffer = max(15, int(round2_repeat_size * 0.05))
+        if buffer > 150: buffer = 150
+        
+        max_template_repeat_size = int(round2_repeat_size + buffer)
+        min_template_repeat_size = int(round2_repeat_size - buffer)
+        
+        if min_template_repeat_size < 0: min_template_repeat_size = 0
+        
+        template_fasta_file  = os.path.join(repeat_region.temp_out_dir, f'round3_reference.read{read_id}.fasta')
+        template_fasta_fp    = open(template_fasta_file, 'w')
+        for repeat_size in range(min_template_repeat_size, max_template_repeat_size+1):
+            template_seq = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * repeat_size + repeat_region.right_anchor_seq
+            template_fasta_fp.write('>%s\n' % repeat_size)
+            template_fasta_fp.write('%s\n' % template_seq)
 
-    if min_template_repeat_size > min(estimated_repeat_size_list) - 10:
-        min_template_repeat_size = int(min(estimated_repeat_size_list) - 10)
-    if max_template_repeat_size < max(estimated_repeat_size_list) + 10:
-        max_template_repeat_size = int(max(estimated_repeat_size_list) + 10) + 1
-    
-    if min_template_repeat_size < 0: min_template_repeat_size = 0
-    
-    template_fasta_file  = os.path.join(repeat_region.temp_out_dir, 'round3_ref.fasta')
-    repeat_region.temp_file_list.append(template_fasta_file)
-    template_fasta_fp    = open(template_fasta_file, 'w')
-    for repeat_size in range(min_template_repeat_size, max_template_repeat_size+1):
-        template_seq = repeat_region.left_anchor_seq + repeat_region.repeat_unit_seq * repeat_size + repeat_region.right_anchor_seq
-        template_fasta_fp.write('>%s\n' % repeat_size)
-        template_fasta_fp.write('%s\n' % template_seq)
+        template_fasta_fp.close()
+        
+        read_seq = repeat_region.read_core_seq_dict[read_name].strip()
+        read_fasta_file = os.path.join(repeat_region.temp_out_dir, f'round3_input.read{read_id}.fasta')
+        
+        read_fasta_f = open(read_fasta_file, 'w')
+        read_fasta_f.write(f'>{read_name}\n')
+        read_fasta_f.write(read_seq + '\n')
+        read_fasta_f.close()
 
-    template_fasta_fp.close()
+        preset = tk.get_preset_for_minimap2(data_type)
+        cmd = f'{minimap2} {preset} -f 0.0 -N 100 -c --eqx -t 1 {template_fasta_file} {read_fasta_file} >> {out_paf_file}'
+        tk.run_system_cmd(cmd)
 
-    round3_paf_file = os.path.join(repeat_region.temp_out_dir, 'round3.paf')
-    repeat_region.temp_file_list.append(round3_paf_file)
+        os.remove(template_fasta_file)
+        os.remove(read_fasta_file)
 
-    preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} {preset} -f 0.0 -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {repeat_region.core_seq_fq_file} > {round3_paf_file}'
-    tk.run_system_cmd(cmd)
-
-    round3_estimation_from_paf(repeat_region, round3_paf_file)
-    
     return
 
 def remove_noisy_reads_1d(allele_list, ploidy):

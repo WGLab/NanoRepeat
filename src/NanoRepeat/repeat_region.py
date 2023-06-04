@@ -81,6 +81,7 @@ class RepeatRegion:
         self.temp_file_list = []
         self.ref_has_issue = False
         self.read_dict = dict()
+        self.read_core_seq_dict = dict()
         self.buffer_len = None
         self.brute_force_repeat_count_dict = dict()
         
