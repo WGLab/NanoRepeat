@@ -40,6 +40,7 @@ conda create -n nanorepeat python=3.8
 conda activate nanorepeat
 pip install NanoRepeat
 ```
+Notice: If you want to install NanoRepeat from a PyPI mirror, please check if the version in the mirror is update to date. 
 
 ## Usage
 
