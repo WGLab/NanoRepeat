@@ -42,6 +42,7 @@ from matplotlib import cm
 matplotlib.rcParams['font.family'] = "sans-serif"
 
 from NanoRepeat import tk
+from NanoRepeat.repeat_region import *
 
 class Allele:
     def __init__(self):
@@ -370,25 +371,41 @@ def create_readinfo_dict_from_allele_list(allele_list, dimension):
 
     return readinfo_dict
 
-def output_phasing_results_1d(allele_list, repeat_region_id, out_prefix):
+def output_phasing_results_1d(repeat_region:RepeatRegion, allele_list):
 
-    out_phasing_file = out_prefix + '.phased_reads.txt'
-    out_phasing_f = open(out_phasing_file, 'w')
-    header  = f'##RepeatRegion={repeat_region_id}\n'
-    header += f'#Read_Name\tAllele_ID\tPhasing_Confidence\tRepeat_Size\n'
-    out_phasing_f.write(header)
-    out = ''
+    if repeat_region.no_details == False:
+        out_phasing_file = repeat_region.out_prefix + '.phased_reads.txt'
+        out_phasing_f = open(out_phasing_file, 'w')
+        header  = f'##RepeatRegion={repeat_region.to_unique_id()}\n'
+        header += f'#Read_Name\tAllele_ID\tPhasing_Confidence\tRepeat_Size\n'
+        out_phasing_f.write(header)
+        out = ''
+
     for label in range(0,len(allele_list)):
         allele_id = label + 1
         allele = allele_list[label]
+
         for i in range(0, len(allele.readname_list)):
             readname = allele.readname_list[i]
             repeat_size1 = allele.repeat1_size_list[i]
             confidence = allele.confidence_list[i]
-            out += f'{readname}\t{allele_id}\t{confidence}\t{repeat_size1:.1f}\n'
-    
-    out_phasing_f.write(out)
-    out_phasing_f.close()
+
+            if repeat_region.no_details == False:
+                out += f'{readname}\t{allele_id}\t{confidence}\t{repeat_size1:.1f}\n'
+
+            if readname not in repeat_region.results.quantified_read_dict:
+                repeat_region.results.quantified_read_dict[readname] = QuantifiedRead()
+                repeat_region.results.quantified_read_dict[readname].read_name = readname
+
+            repeat_region.results.quantified_read_dict[readname].repeat_size1 = repeat_size1
+            repeat_region.results.quantified_read_dict[readname].allele_id = allele_id
+            repeat_region.results.quantified_read_dict[readname].phasing_confidence = confidence
+
+    if repeat_region.no_details == False:
+        out_phasing_f.write(out)
+        out_phasing_f.close()
+
+    return
 
 def output_phasing_results_2d(allele_list, repeat1_id, repeat2_id, in_fastq_file, out_prefix):
 
@@ -457,25 +474,35 @@ def output_phased_fastq(in_fastq_file, readinfo_dict, num_alleles, out_prefix):
 
     return
 
-def output_summary_file_1d(allele_list, repeat_id, num_removed_reads, out_prefix):
+def output_summary_file_1d(repeat_region:RepeatRegion, allele_list, num_removed_reads, out_prefix):
 
     num_alleles = len(allele_list)
-    out_summray_file = out_prefix + '.summary.txt'
-    filebasename = os.path.split(out_summray_file)[1]
-    out_summray_f = open(out_summray_file, 'w')
-    summary_info  = f'Summary_file={filebasename}\tRepeat_Region={repeat_id}'
-    summary_info += f'\tMethod=GMM'
-    summary_info += f'\tNum_Alleles={num_alleles}'
-    summary_info += f'\tNum_Removed_Reads={num_removed_reads}'
+    if repeat_region.no_details == False:
+        
+        out_summray_file = out_prefix + '.summary.txt'
+        filebasename = os.path.split(out_summray_file)[1]
+        out_summray_f = open(out_summray_file, 'w')
+        summary_info  = f'Summary_file={filebasename}\tRepeat_Region={repeat_region.to_unique_id()}'
+        summary_info += f'\tMethod=GMM'
+        summary_info += f'\tNum_Alleles={num_alleles}'
+        summary_info += f'\tNum_Removed_Reads={num_removed_reads}'
 
     for label in range(0, num_alleles):
         allele_id = label + 1
-        summary_info += f'\tAllele{allele_id}_Num_Reads={allele_list[label].num_reads}'
-        summary_info += f'\tAllele{allele_id}_Repeat_Size={allele_list[label].repeat1_median_size}'
+        if repeat_region.no_details == False:
+            summary_info += f'\tAllele{allele_id}_Num_Reads={allele_list[label].num_reads}'
+            summary_info += f'\tAllele{allele_id}_Repeat_Size={allele_list[label].repeat1_median_size}'
 
-    summary_info += '\n'
-    out_summray_f.write(summary_info)
-    out_summray_f.close()
+        quantified_allele = QuantifiedAllele()
+        quantified_allele.repeat_size1 = allele_list[label].repeat1_median_size
+        quantified_allele.num_supp_reads = allele_list[label].num_reads
+        repeat_region.results.quantified_allele_list.append(quantified_allele)
+
+        
+    if repeat_region.no_details == False:
+        summary_info += '\n'
+        out_summray_f.write(summary_info)
+        out_summray_f.close()
 
     return
 
@@ -500,20 +527,27 @@ def output_summary_file_2d(in_fastq_file, allele_list, repeat1_id, repeat2_id, n
 
     return
 
-def output_repeat_size_1d(repeat_region):
+def output_repeat_size_1d(repeat_region:RepeatRegion):
 
-    repeat_size_file =  f'{repeat_region.out_prefix}.repeat_size.txt'
-    repeat_size_f    = open(repeat_size_file, 'w')
-
-    header  = f'##Repeat_Region={repeat_region.to_unique_id()}\n'
-    header += f'#Read_Name\tRepeat_Size\n'
-    repeat_size_f.write(header)
+    if repeat_region.no_details == False:
+        repeat_size_file =  f'{repeat_region.out_prefix}.repeat_size.txt'
+        repeat_size_f = open(repeat_size_file, 'w')
+        header  = f'##Repeat_Region={repeat_region.to_unique_id()}\n'
+        header += f'#Read_Name\tRepeat_Size\n'
+        repeat_size_f.write(header)
     
     for read_name in repeat_region.read_dict:
         repeat_size = repeat_region.read_dict[read_name].round3_repeat_size
         if repeat_size != None:
-            repeat_size_f.write(f'{read_name}\t{repeat_size:.1f}\n')
-    repeat_size_f.close()
+            if repeat_region.no_details == False:
+                repeat_size_f.write(f'{read_name}\t{repeat_size:.1f}\n')
+            if read_name not in repeat_region.results.quantified_read_dict:
+                repeat_region.results.quantified_read_dict[read_name] = QuantifiedRead()
+                repeat_region.results.quantified_read_dict[read_name].read_name = read_name
+                repeat_region.results.quantified_read_dict[read_name].repeat_size1 = repeat_size
+
+    if repeat_region.no_details == False:
+        repeat_size_f.close()
 
     return
 

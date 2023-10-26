@@ -38,6 +38,7 @@ from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
 from NanoRepeat.paf import *
 from NanoRepeat.split_alleles import *
+from NanoRepeat.repeat_region import *
 
 class Metainfo:
     def __init__(self, allele_id = -1, num_reads = 0, predicted_repeat_size = -1, min_repeat_size = -1, max_repeat_size = -1):
@@ -612,7 +613,7 @@ def remove_noisy_reads_1d(allele_list, ploidy):
     return allele_list, num_removed_reads
 
 
-def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_overlap, max_num_components, remove_noisy_reads):
+def split_allele_using_gmm_1d(repeat_region:RepeatRegion, ploidy, error_rate, max_mutual_overlap, max_num_components, remove_noisy_reads):
 
     in_fastq_file = repeat_region.region_fq_file
     out_prefix = repeat_region.out_prefix
@@ -661,25 +662,39 @@ def split_allele_using_gmm_1d(repeat_region, ploidy, error_rate, max_mutual_over
     readinfo_dict = create_readinfo_dict_from_allele_list(allele_list, dimension)
 
     tk.eprint('NOTICE: Writing phasing results...')
-    output_phasing_results_1d(allele_list, repeat_region.to_unique_id(), repeat_region.out_prefix)
+    output_phasing_results_1d(repeat_region, allele_list)
     
     output_phased_fastq(in_fastq_file, readinfo_dict, best_n_components, out_prefix)
 
     tk.eprint('NOTICE: Writing summary file...')
-    output_summary_file_1d(allele_list, repeat_region.to_unique_id(), num_removed_reads, out_prefix)
+    repeat_region.results.num_alleles = len(allele_list)
+    output_summary_file_1d(repeat_region, allele_list, num_removed_reads, out_prefix)
 
     tk.eprint('NOTICE: Plotting figures...')
-    plot_repeat_counts_1d(readinfo_dict, allele_list, repeat_region.to_unique_id(), out_prefix)
+    if repeat_region.no_details == False:
+        plot_repeat_counts_1d(readinfo_dict, allele_list, repeat_region.to_unique_id(), out_prefix)
 
     return
     
 def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fasta_dict:dict, repeat_region:RepeatRegion):
 
+    def _clean_and_exit(input_args, repeat_region:RepeatRegion):
+
+        if input_args.save_temp_files == False:
+            shutil.rmtree(repeat_region.temp_out_dir)
+
+        if repeat_region.no_details == True:
+            shutil.rmtree(f'{input_args.out_prefix}.details')
+
+        return repeat_region.results
+
     temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_dir.{repeat_region.to_outfile_prefix()}'
+    out_dir = f'{input_args.out_prefix}.details/{repeat_region.chrom}'
     os.makedirs(temp_out_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     repeat_region.temp_out_dir = temp_out_dir
-    repeat_region.out_prefix = f'{input_args.out_prefix}.{repeat_region.to_outfile_prefix()}'
+    repeat_region.out_prefix = f'{out_dir}/{repeat_region.to_outfile_prefix()}'
     repeat_region.anchor_len = input_args.anchor_len
 
     # extract reads from bam file
@@ -695,21 +710,18 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
     tk.run_system_cmd(cmd)
 
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
+    
     if fastq_file_size == 0:
         tk.eprint(f'WARNING! No reads were found in repeat region: {repeat_region.to_outfile_prefix()}')
-        if input_args.save_temp_files == False: 
-            shutil.rmtree(repeat_region.temp_out_dir)
-        return
+        return _clean_and_exit(input_args, repeat_region)
 
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
     
     refine_repeat_region_in_ref(input_args.minimap2, repeat_region)
     
-    if repeat_region.ref_has_issue == True: 
-        if input_args.save_temp_files == False: 
-            shutil.rmtree(repeat_region.temp_out_dir)
-        return
+    if repeat_region.ref_has_issue == True and input_args.save_temp_files == False:
+        return _clean_and_exit(input_args, repeat_region)
     
     tk.eprint('NOTICE: Step 1: finding anchor location in reads')
     find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, input_args.num_cpu)
@@ -731,11 +743,8 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
 
     tk.eprint('NOTICE: Step 4: phasing reads using GMM')
     split_allele_using_gmm_1d(repeat_region, input_args.ploidy, error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
-    
-    if input_args.save_temp_files == False:
-        shutil.rmtree(repeat_region.temp_out_dir)
 
-    return
+    return _clean_and_exit(input_args, repeat_region)
 
 def nanoRepeat_bam (input_args, in_bam_file:string):
     
@@ -754,15 +763,21 @@ def nanoRepeat_bam (input_args, in_bam_file:string):
         sys.exit(1)
     
     tk.eprint(f'NOTICE: Reading repeat region file: {input_args.repeat_region_bed}')
-    repeat_region_list = read_repeat_region_file(input_args.repeat_region_bed)
+    repeat_region_list = read_repeat_region_file(input_args.repeat_region_bed, input_args.no_details)
 
     tk.eprint(f'NOTICE: Reading reference fasta file: {input_args.ref_fasta}')
     ref_fasta_dict = tk.fasta_file2dict(input_args.ref_fasta)
     
+    out_tsv_file = f'{input_args.out_prefix}.NanoRepeat_output.tsv'
+    out_tsv_f = open(out_tsv_file, 'w')
     for repeat_region in repeat_region_list:
         tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_outfile_prefix()}')
-        quantify1repeat_from_bam(input_args, error_rate, in_bam_file, ref_fasta_dict, repeat_region)
-
+        results = quantify1repeat_from_bam(input_args, error_rate, in_bam_file, ref_fasta_dict, repeat_region)
+        out_tsv_f.write(f'{repeat_region.to_tab_invertal()}\t{repeat_region.repeat_unit_seq}\t')
+        num_alleles = len(results.quantified_allele_list)
+        out_tsv_f.write(f'{num_alleles}\t{results.max_repeat_size1()}\t{results.min_repeat_size1()}\t{results.allele_summary()}\t{results.read_summary()}\n')
+        
+    out_tsv_f.close()
     tk.eprint('NOTICE: Program finished.')
 
     return

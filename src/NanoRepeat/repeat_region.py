@@ -53,8 +53,66 @@ class Read:
         self.round2_repeat_size = None
         self.round3_repeat_size = None
 
+class QuantifiedAllele:
+    def __init__(self):
+        self.num_supp_reads = '*'
+        self.repeat_size1 = '*'
+        self.repeat_size2 = '*'
+
+class QuantifiedRead:
+    def __init__(self):
+        self.read_name = '*'
+        self.repeat_size1 = -1
+        self.repeat_size2 = -1
+        self.allele_id = -1
+        self.phasing_confidence = -1
+
+class Result:
+    def __init__(self):
+        self.quantified_allele_list = []
+        self.quantified_read_dict = dict()
+
+    def allele_summary(self):
+        summary = 'Allele_Repeat_Size;Allele_Num_Support_Reads'
+        for i in range(0, len(self.quantified_allele_list)):
+            quantified_allele = self.quantified_allele_list[i]
+            summary += f'|{quantified_allele.repeat_size1};{quantified_allele.num_supp_reads}'
+
+        return summary
+    
+    def read_summary(self):
+        summary = 'Read_Name;Read_Repeat_Size;Read_Allele_ID;PhasingConfidence'
+        for read_name in self.quantified_read_dict:
+            quantified_read = self.quantified_read_dict[read_name]
+            summary += f'|{quantified_read.read_name};{quantified_read.repeat_size1};{quantified_read.allele_id};{quantified_read.phasing_confidence}'
+
+        return summary
+    
+    def max_repeat_size1(self):
+        if len(self.quantified_allele_list) == 0:
+            return -1
+        
+        max_size = self.quantified_allele_list[0].repeat_size1
+
+        for i in range(1, len(self.quantified_allele_list)):
+            if self.quantified_allele_list[i].repeat_size1 > max_size:
+                max_size = self.quantified_allele_list[i].repeat_size1
+        return max_size
+    
+    def min_repeat_size1(self):
+        if len(self.quantified_allele_list) == 0:
+            return -1
+        
+        min_size = self.quantified_allele_list[0].repeat_size1
+
+        for i in range(1, len(self.quantified_allele_list)):
+            if self.quantified_allele_list[i].repeat_size1 < min_size:
+                min_size = self.quantified_allele_list[i].repeat_size1
+        return min_size
+    
+
 class RepeatRegion:
-    def __init__(self, line = None):
+    def __init__(self, line = None, no_details=False):
         self.left_anchor_seq = None
         self.right_anchor_seq = None
         
@@ -84,8 +142,10 @@ class RepeatRegion:
         self.read_core_seq_dict = dict()
         self.buffer_len = None
         self.brute_force_repeat_count_dict = dict()
-        
-    
+
+        self.no_details = no_details
+        self.results = Result()
+
         if line != None:
             col_list = line.strip().split('\t')
             if len(col_list) < 4:
@@ -103,6 +163,13 @@ class RepeatRegion:
         if start_pos < 0: start_pos = 0
         return f'{self.chrom}:{start_pos}-{end_pos}'
 
+    def to_tab_invertal(self, flank_dist = 0):
+        assert (flank_dist >= 0)
+        start_pos = self.start_pos - flank_dist
+        end_pos = self.end_pos + flank_dist
+        if start_pos < 0: start_pos = 0
+        return f'{self.chrom}\t{start_pos}\t{end_pos}'
+    
     def to_unique_id(self):
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{self.repeat_unit_seq}'
 
@@ -114,13 +181,13 @@ class RepeatRegion:
 
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{seq}'
     
-def read_repeat_region_file(repeat_region_file):
+def read_repeat_region_file(repeat_region_file, no_details):
     repeat_region_list = []
     repeat_region_f = open(repeat_region_file, 'r')
     lines = list(repeat_region_f)
     repeat_region_f.close()
     for line in lines:
-        repeat_region = RepeatRegion(line)
+        repeat_region = RepeatRegion(line, no_details)
         repeat_region_list.append(repeat_region)
 
     return repeat_region_list

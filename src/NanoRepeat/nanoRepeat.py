@@ -99,11 +99,6 @@ def main():
     examples  = f'Examples: \n'
     examples += f'\t# Input is a BAM file:\n'
     examples += f'\t{program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
-    examples += f'\t# Input is a FASTQ file:\n'
-    examples += f'\t{program} -i input.fastq -t fastq -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
-    examples += f'\t# Input is a FASTA file:\n'
-    examples += f'\t{program} -i input.fasta -t fasta -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
-    
     examples += f'\t# For ONT reads basecalled with super accuracy mode:\n'
     examples += f'\t{program} -i input.bam   -t bam -d ont_sup -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     examples += f'\t# For ONT Q20+ reads\n'
@@ -112,8 +107,14 @@ def main():
     examples += f'\t{program} -i input.bam   -t bam -d hifi    -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     examples += f'\t# For PacBio CLR reads:\n'
     examples += f'\t{program} -i input.bam   -t bam -d clr     -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+
+    examples += f'\t# Input is a FASTQ file (assuming PacBio HiFi reads):\n'
+    examples += f'\t{program} -i input.fastq -t fastq -d ont_q20 -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# Input is a FASTA file (assuming PacBio HiFi reads):\n'
+    examples += f'\t{program} -i input.fasta -t fasta -d hifi -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     
-    examples += f'\nContact: Li Fang (fangli9@sysu.edu.cn)\n'
+
+    examples += f'\nContact: Li Fang (fangli9@mail.sysu.edu.cn)\n'
     
     parser = argparse.ArgumentParser(prog = program, description=f'NanoRepeat: short tandem repeat (STR) quantification from Nanopore long-read sequencing', epilog=examples, formatter_class=RawTextHelpFormatter)
 
@@ -124,9 +125,9 @@ def main():
     
     parser.add_argument('-b', '--repeat_region_bed', required = True, metavar = 'repeat_regions.bed', type = str, help = '(required) path to the repeat region file (tab delimited text file with 4 columns: chrom start end repeat_unit_seq. Positions start from 0. Start position is self-inclusive but end position is NOT self-inclusive)')
     parser.add_argument('-o', '--out_prefix', required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files')
-    
+    parser.add_argument('-d', '--data_type', required = True, metavar = 'data_type',  type = str, help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
     # optional
-    parser.add_argument('-d', '--data_type', required = False, metavar = 'data_type',  type = str, default = 'ont', help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
+    
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
     parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
@@ -136,6 +137,7 @@ def main():
     parser.add_argument('--remove_noisy_reads', required = False, action='store_true', help = 'remove noisy components when there are more components than ploidy')
     parser.add_argument('--fast_mode', required = False, action='store_true', help = 'fast quantification for repeat size, accuracy may be a little lower')
     parser.add_argument('--save_temp_files', required = False, action='store_true', help = 'save temporary alignment files')
+    parser.add_argument('--no_details', required = False, action='store_true', help = 'do not output detailed information for each repeat region')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
     
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:
