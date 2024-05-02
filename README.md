@@ -83,7 +83,7 @@ nanoRepeat.py \
 
 `-t` specifies the input file type. There are four valid values: bam, cram, fastq or fasta. In this case the input file is in a bam file. 
 
-`-d` specifies the data type. There are five valid values: `ont_q20`, `ont_sup`, `ont`, `hifi`, and `clr`. `ont_q20` is for Oxford Nanopore sequencing with Q20+ chemistry. `ont_sup` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in super accuracy mode. `ont` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in fast mode or high accuracy mode. `hifi` is for PacBio HiFi/CCS reads. `clr` is for PacBio Continuous Long Reads (CLR) reads. Default value: `ont`.
+`-d` specifies the data type. There are five valid values: `ont_q20`, `ont_sup`, `ont`, `hifi`, and `clr`. `ont_q20` is for Oxford Nanopore sequencing with Q20+ chemistry (such as R10 flowcells). `ont_sup` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in super accuracy mode. `ont` is for Oxford Nanopore sequencing with R9 flowcells and basecalled in fast mode or high accuracy mode. `hifi` is for PacBio HiFi/CCS reads. `clr` is for PacBio Continuous Long Reads (CLR) reads. Default value: `ont`.
 
 `-r` specifies the reference genome file in `FASTA` format. In this case, `GRCh37_chr1.fasta` is chr1 of the GRCh37/hg19 reference genome. We used GRCh37 instead of GRCh38 because the HG002 SV benchmark set is based on GRCh37. 
 
