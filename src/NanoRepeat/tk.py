@@ -36,6 +36,7 @@ from timeit import repeat
 
 TimeFormat = '%m/%d/%Y %H:%M:%S'
 
+
 class ReadError:
     def __init__(self, num_match = 0, num_mismatch = 1000000, num_ins = 1000000, num_del = 1000000, align_score = 0):
         self.num_match = num_match

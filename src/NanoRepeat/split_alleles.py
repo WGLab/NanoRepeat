@@ -25,7 +25,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+
 import os
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+
 import sys
 import random
 import numpy as np
@@ -164,7 +169,7 @@ def analysis_outlier_2d(read_repeat_joint_count_dict):
     return min_count1, max_count1, min_count2, max_count2
 
 def auto_GMM_1d(X, max_num_components, cov_type, max_mutual_overlap):
-
+    
     for n in range(2, max_num_components + 1):
         gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init=10).fit(X)
         # gmm.means_.shape = (n, 1) (n_components, n_variable)
@@ -196,6 +201,7 @@ def auto_GMM_1d(X, max_num_components, cov_type, max_mutual_overlap):
 
 
 def auto_GMM_2d(X, max_num_components, cov_type, max_mutual_overlap):
+    
     for n in range(1, max_num_components+1):
         gmm = GaussianMixture(n_components=n, covariance_type=cov_type, n_init=10).fit(X)
         # gmm.means_.shape = (n, 2) (n_components, n_variable)
