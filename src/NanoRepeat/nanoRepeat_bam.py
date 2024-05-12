@@ -129,7 +129,7 @@ def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
     
     return
 
-def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion):
+def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
 
     mid_ref_seq            = repeat_region.mid_ref_seq
     repeat_unit_seq        = repeat_region.repeat_unit_seq
@@ -154,7 +154,7 @@ def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion):
 
     score_parameters = '-x ava-ont -z30 -k3 -w2 -m1 -n2 -s10'
 
-    cmd = f'{minimap2} {score_parameters} -f 0 --cs  {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file}'
+    cmd = f'{minimap2} {score_parameters} -f 0 --cs -t {num_cpu} {pure_repeat_seq_file} {mid_ref_seq_file} > {ref_check_paf_file}'
     tk.run_system_cmd(cmd)
 
     ref_check_paf_f = open(ref_check_paf_file, 'r')
@@ -718,7 +718,7 @@ def quantify1repeat_from_bam(input_args, error_rate, in_bam_file:string, ref_fas
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
     
-    refine_repeat_region_in_ref(input_args.minimap2, repeat_region)
+    refine_repeat_region_in_ref(input_args.minimap2, repeat_region, input_args.num_cpu)
     
     if repeat_region.ref_has_issue == True and input_args.save_temp_files == False:
         return _clean_and_exit(input_args, repeat_region)
