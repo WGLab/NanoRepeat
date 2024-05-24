@@ -52,6 +52,8 @@ class Read:
         self.round1_repeat_size = None
         self.round2_repeat_size = None
         self.round3_repeat_size = None
+        self.round3_paf_text = ""
+        
 
 class QuantifiedAllele:
     def __init__(self):
@@ -145,6 +147,8 @@ class RepeatRegion:
 
         self.no_details = no_details
         self.results = Result()
+        self.final_output = "" 
+
 
         if line != None:
             col_list = line.strip().split('\t')
