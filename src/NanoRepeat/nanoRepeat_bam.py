@@ -653,7 +653,7 @@ def split_allele_using_gmm_1d(repeat_region:RepeatRegion, ploidy, error_rate, ma
 
     return
     
-def quantify1repeat_from_bam(thread_id, num_theads_per_region, input_args, error_rate, in_bam_file:string, ref_fasta_dict:dict, repeat_region:RepeatRegion):
+def quantify1repeat_from_bam(process_id, num_theads_per_region, input_args, error_rate, in_bam_file:string, ref_fasta_dict:dict, repeat_region:RepeatRegion):
     
     def _clean_and_exit(input_args, repeat_region:RepeatRegion):
 
@@ -675,7 +675,7 @@ def quantify1repeat_from_bam(thread_id, num_theads_per_region, input_args, error
     else:
         formatted_chr_name = repeat_region.chrom
      
-    temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_{thread_id:02}.{repeat_region.to_outfile_prefix()}'
+    temp_out_dir = f'{input_args.out_prefix}.NanoRepeat_temp_{process_id:02}.{repeat_region.to_outfile_prefix()}'
     out_dir = f'{input_args.out_prefix}.details/{formatted_chr_name}'
     os.makedirs(temp_out_dir, exist_ok=True)
     os.makedirs(out_dir, exist_ok=True)
@@ -687,7 +687,8 @@ def quantify1repeat_from_bam(thread_id, num_theads_per_region, input_args, error
     # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_outfile_prefix()}.fastq')
     region_bam_file = f'{repeat_region.out_prefix}.sorted.bam'
-    # cmd = f'{input_args.samtools} view --reference {input_args.ref_fasta} -hb {in_bam_file} {repeat_region.to_invertal(flank_dist=repeat_region.anchor_len)} > {region_bam_file}'
+
+    '''
     cmd = f'{input_args.samtools} view -hb {in_bam_file} {repeat_region.to_invertal(flank_dist=repeat_region.anchor_len)} > {region_bam_file}'
     tk.run_system_cmd(cmd) 
 
@@ -696,7 +697,12 @@ def quantify1repeat_from_bam(thread_id, num_theads_per_region, input_args, error
 
     cmd = f'{input_args.samtools} fastq {region_bam_file} > {repeat_region.region_fq_file}'
     tk.run_system_cmd(cmd)    
-
+    '''
+    
+    cmd = f'{input_args.samtools} view -h {in_bam_file} {repeat_region.to_invertal(flank_dist=repeat_region.anchor_len)} | {input_args.samtools} fastq - > {repeat_region.region_fq_file}'
+    
+    tk.run_system_cmd(cmd) 
+    
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
 
     if fastq_file_size == 0:
@@ -710,21 +716,21 @@ def quantify1repeat_from_bam(thread_id, num_theads_per_region, input_args, error
     if repeat_region.ref_has_issue == True and input_args.save_temp_files == False:
         return _clean_and_exit(input_args, repeat_region)
     
-    tk.eprint('NOTICE: Step 1: finding anchor location in reads')
+    tk.eprint(f'NOTICE: [Process {process_id:02}] Step 1: finding anchor location in reads')
     find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, num_theads_per_region)
     
     # make core sequence fastq
     make_core_seq_fastq(repeat_region)
 
-    tk.eprint('NOTICE: Step 2: round 1 and round 2 estimation')
+    tk.eprint(f'NOTICE: [Process {process_id:02}] Step 2: round 1 and round 2 estimation')
     round1_and_round2_estimation(input_args.minimap2, input_args.data_type, repeat_region, num_theads_per_region)
 
-    tk.eprint('NOTICE: Step 3: round 3 estimation')
+    tk.eprint(f'NOTICE: [Process {process_id:02}] Step 3: round 3 estimation')
     round3_estimation(input_args.minimap2, input_args.data_type, input_args.fast_mode, repeat_region, num_theads_per_region)
 
     output_repeat_size_1d(repeat_region)
 
-    tk.eprint('NOTICE: Step 4: phasing reads using GMM')
+    tk.eprint(f'NOTICE: [Process {process_id:02}] Step 4: phasing reads using GMM')
     split_allele_using_gmm_1d(repeat_region, input_args.ploidy, error_rate, input_args.max_mutual_overlap, input_args.max_num_components, input_args.remove_noisy_reads)
 
     return _clean_and_exit(input_args, repeat_region)
@@ -735,7 +741,7 @@ def quantify_repeats_from_bam_1process(args):
         if i % num_para_regions != process_id: continue
 
         repeat_region = repeat_region_list[i]
-        tk.eprint(f'NOTICE: Quantifying repeat: {repeat_region.to_outfile_prefix()}')
+        tk.eprint(f'NOTICE: [Process {process_id:02}] Quantifying repeat: {repeat_region.to_outfile_prefix()}')
         quantify1repeat_from_bam(process_id, num_theads_per_region, input_args, error_rate, in_bam_file, ref_fasta_dict, repeat_region)
     return
 
