@@ -147,7 +147,8 @@ class RepeatRegion:
 
         self.no_details = no_details
         self.results = Result()
-        self.final_output = "" 
+        self.final_output = None
+        self.index = None
 
 
         if line != None:
@@ -185,6 +186,12 @@ class RepeatRegion:
 
         return f'{self.chrom}-{self.start_pos}-{self.end_pos}-{seq}'
     
+    def get_final_output(self):
+        out_string = f'{self.to_tab_invertal()}\t{self.repeat_unit_seq}\t'
+        num_alleles = len(self.results.quantified_allele_list)
+        out_string += f'{num_alleles}\t{self.results.max_repeat_size1()}\t{self.results.min_repeat_size1()}\t{self.results.allele_summary()}\t{self.results.read_summary()}\n'
+        self.final_output = out_string
+        
 def read_repeat_region_file(repeat_region_file, no_details):
     repeat_region_list = []
     repeat_region_f = open(repeat_region_file, 'r')

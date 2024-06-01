@@ -28,16 +28,16 @@ SOFTWARE.
 
 import os
 import sys
-import time
 import argparse
 from argparse import RawTextHelpFormatter
+import pysam
 
 from NanoRepeat import nanoRepeat_bam
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
 from NanoRepeat import __init__
 
-def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, samtools, minimap2, num_cpu, bam_prefix):
+def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, minimap2, num_cpu, bam_prefix):
     
     sam_file        = f'{bam_prefix}.sam'
     bam_file        = f'{bam_prefix}.bam'
@@ -52,43 +52,26 @@ def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, samtools, 
     if os.path.exists(sorted_bam_file):
         os.remove(sorted_bam_file)
 
-    sleep_time = 5
-
     preset = tk.get_preset_for_minimap2(data_type)
     cmd = f'{minimap2} -a {preset} -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
     tk.run_system_cmd(cmd)
-    time.sleep(sleep_time)
 
-    cmd = f'{samtools} view -hb -@ {num_cpu} {sam_file} > {bam_file} 2> /dev/null'
-    tk.run_system_cmd(cmd)
-    time.sleep(sleep_time)
-
-    if os.path.getsize(bam_file) > 0:
-        os.remove(sam_file)
-    else:
-        tk.eprint(f'ERROR! {bam_file} is empty')
-        sys.exit(1)
-
-    cmd = f'{samtools} sort -@ {num_cpu} -o {sorted_bam_file} {bam_file} 2> /dev/null'
-    tk.run_system_cmd(cmd)
-    time.sleep(sleep_time)
+    pysam.sort("-@", str(num_cpu), "-o", sorted_bam_file, sam_file)
 
     if os.path.getsize(sorted_bam_file) > 0:
-        os.remove(bam_file)
+        os.remove(sam_file)
     else:
         tk.eprint(f'ERROR! {sorted_bam_file} is empty')
         sys.exit(1)
 
-    cmd = f'{samtools} index {sorted_bam_file}'
-    tk.run_system_cmd(cmd)
-    time.sleep(sleep_time)
+    pysam.index("-@", str(num_cpu), sorted_bam_file)
 
-    return f'{sorted_bam_file}'
+    return sorted_bam_file
 
 def preprocess_fastq(input_args):
     
     bam_prefix    =  f'{input_args.out_prefix}.minimap2'
-    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.data_type, input_args.ref_fasta, input_args.samtools, input_args.minimap2, input_args.num_cpu, bam_prefix)
+    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.data_type, input_args.ref_fasta, input_args.minimap2, input_args.num_cpu, bam_prefix)
     
     nanoRepeat_bam.nanoRepeat_bam(input_args, in_bam_file)
     return
@@ -129,7 +112,7 @@ def main():
     # optional
     
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
-    parser.add_argument('--samtools', required = False, metavar = 'path/to/samtools',  type = str, default = 'samtools', help ='(optional) path to samtools (default: using environment default)')
+    parser.add_argument('--samtools', required = False, metavar = '(deprecated)',  type = str, default = 'samtools', help ='(deprecated) this argument is not needed and will be ignored')
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
     parser.add_argument('--ploidy',   required = False, metavar = 'INT', type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
     parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 1000 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
@@ -184,6 +167,7 @@ def main():
     input_args.out_prefix        = os.path.abspath(input_args.out_prefix)
     input_args.repeat_region_bed = os.path.abspath(input_args.repeat_region_bed)
 
+    tk.eprint(f'NOTICE: Running command: {" ".join(sys.argv)}')
     tk.eprint(f'NOTICE: Input file is: {input_args.input}')
     tk.eprint(f'NOTICE: Input type is: {input_args.type}')
     tk.eprint(f'NOTICE: Referece fasta file is: {input_args.ref_fasta}')
