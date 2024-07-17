@@ -656,7 +656,7 @@ def split_allele_using_gmm_1d(repeat_region:RepeatRegion, ploidy, error_rate, ma
     return
 
 def extract_fastq_from_bam(in_bam_file, repeat_region:RepeatRegion, flank_dist, out_fastq_file):
-
+    quality_shift = 33
     assert (flank_dist >= 0)
     chrom = repeat_region.chrom
     start_pos = repeat_region.start_pos - flank_dist
@@ -664,12 +664,17 @@ def extract_fastq_from_bam(in_bam_file, repeat_region:RepeatRegion, flank_dist, 
     if start_pos < 0: start_pos = 0
 
     bam = pysam.AlignmentFile(in_bam_file, "rb")
+    
     with open(out_fastq_file, 'w') as fastq:
         for read in bam.fetch(chrom, start_pos, end_pos):
-            if read.query_sequence == None: continue
-            if read.query_qualities == None: continue
+            if read.query_sequence == None: 
+                continue
+            
             fastq.write(f'@{read.query_name}\n{read.query_sequence}\n+\n')
-            fastq.write(''.join([chr(q + 33) for q in read.query_qualities]) + '\n')
+            if read.query_qualities != None:
+                fastq.write(''.join([chr(q + quality_shift) for q in read.query_qualities]) + '\n')
+            else:
+                fastq.write(chr(quality_shift + 13) * len(read.query_sequence) + '\n')
 
     bam.close()
     return

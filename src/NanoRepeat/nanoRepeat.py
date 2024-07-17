@@ -80,12 +80,14 @@ def main():
 
     program = 'nanoRepeat.py'
     examples  = f'Examples: \n'
-    examples += f'\t# Input is a BAM file:\n'
-    examples += f'\t{program} -i input.bam   -t bam   -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
-    examples += f'\t# For ONT reads basecalled with super accuracy mode:\n'
-    examples += f'\t{program} -i input.bam   -t bam -d ont_sup -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     examples += f'\t# For ONT Q20+ reads\n'
     examples += f'\t{program} -i input.bam   -t bam -d ont_q20 -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# For ONT R9.4.1 reads basecalled with super accuracy mode:\n'
+    examples += f'\t{program} -i input.bam   -t bam -d ont_sup -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    examples += f'\t# For ONT R9.4.1 reads without super accuracy mode:\n'
+    examples += f'\t{program} -i input.bam   -t bam -d ont     -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
+    
+    
     examples += f'\t# For PacBio HiFi reads:\n'
     examples += f'\t{program} -i input.bam   -t bam -d hifi    -r hg38.fasta -b hg38.repeats.bed -c 4 -o prefix/of/output/files\n\n'
     examples += f'\t# For PacBio CLR reads:\n'
