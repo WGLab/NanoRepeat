@@ -1,4 +1,4 @@
-# NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data
+# NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data (including ONT and PacBio)
 
 [![PyPI version](https://badge.fury.io/py/NanoRepeat.svg)](https://badge.fury.io/py/NanoRepeat)
 [![DOI](https://www.zenodo.org/badge/DOI/10.5281/zenodo.7024484.svg)](https://www.zenodo.org/record/7024484)
@@ -19,9 +19,8 @@
 
 1. [Python](https://www.python.org/downloads/) (version >= 3.8)
 2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.22)
-3. [Samtools](https://github.com/samtools/samtools.git) (version >= 1.13)
 
-You may alreadly have `minimap2` and `samtools` if you performed analysis of Oxford Nanopore sequencing data. You can use `which minimap2` and `which samtools` to check the full path to the two executable files. Please note that `minimap2` should be v2.22 or later. 
+You may alreadly have `minimap2` if you performed analysis of long-read sequencing data. You can use `which minimap2` to check the full path to the two executable files. Please note that `minimap2` should be v2.22 or later. 
 
 Once you installed the above tools, you can use the following commands to install NanoRepeat (we recommend creating an new conda environment to avoid dependency issues):
 
