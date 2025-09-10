@@ -41,6 +41,7 @@ import pysam
 from typing import List
 import subprocess
 import multiprocessing
+import glob
 
 
 from NanoRepeat import tk
@@ -701,7 +702,13 @@ def quantify1repeat_from_bam(process_name, num_threads_per_region, input_args, e
             shutil.rmtree(repeat_region.temp_out_dir)
 
         if repeat_region.no_details == True:
-            shutil.rmtree(f'{input_args.out_prefix}.details')
+            files_to_delete = glob.glob(f'{repeat_region.out_prefix}*')
+            for file_path in files_to_delete:
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"Error in deleting file {file_path}: {e}")
         
         repeat_region.get_final_output()
         return repeat_region
@@ -811,6 +818,9 @@ def nanoRepeat_bam (input_args, in_bam_file:string):
         out_tsv_f.write(quantified_repeat_region[i].final_output)
     out_tsv_f.close()
 
+    if input_args.no_details == True:
+        shutil.rmtree(f'{input_args.out_prefix}.details')
+        
     tk.eprint('NOTICE: Program finished.')
 
     return
