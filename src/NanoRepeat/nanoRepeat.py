@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Copyright (c) 2020-2023 Children's Hospital of Philadelphia
+Copyright (c) 2020-2026 Children's Hospital of Philadelphia
 Author: Li Fang (fangli2718@gmail.com)
               
 Permission is hereby granted, free of charge, to any person obtaining
@@ -35,7 +35,7 @@ import pysam
 from NanoRepeat import nanoRepeat_bam
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
-from NanoRepeat import __init__
+from NanoRepeat import __version__
 
 def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, minimap2, num_cpu, bam_prefix):
     
@@ -112,7 +112,8 @@ def main():
     parser.add_argument('-o', '--out_prefix', required = True, metavar = 'path/to/out_dir/prefix_of_file_names',   type = str, help = '(required) prefix of output files')
     parser.add_argument('-d', '--data_type', required = True, metavar = 'data_type',  type = str, help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
     # optional
-    
+
+    parser.add_argument('-v', '--version', action='version', version=f'%(prog)s {__version__}', help='show program\'s version number and exit')
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
     parser.add_argument('--samtools', required = False, metavar = '(deprecated)',  type = str, default = 'samtools', help ='(deprecated) this argument is not needed and will be ignored')
     parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
