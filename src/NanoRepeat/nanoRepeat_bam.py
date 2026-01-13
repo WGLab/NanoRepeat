@@ -29,22 +29,16 @@ SOFTWARE.
 
 import os
 
-from NanoRepeat import repeat_region
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-
-
 import string
 import sys
 import shutil
 import numpy as np
 import pysam
 from typing import List
-import subprocess
 import multiprocessing
 import glob
 import Levenshtein
+import pyminimap2 as pymm2
 
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
@@ -263,7 +257,7 @@ def find_anchor_locations_from_paf(repeat_region: RepeatRegion, anchor_locations
 
     return
 
-def find_anchor_locations_in_reads(minimap2:string, data_type:string, repeat_region:RepeatRegion, num_cpu:int):
+def find_anchor_locations_in_reads(data_type:string, repeat_region:RepeatRegion, num_cpu:int):
 
     left_template_seq    = repeat_region.left_anchor_seq
     left_template_name   = 'left_anchor'
@@ -283,9 +277,9 @@ def find_anchor_locations_in_reads(minimap2:string, data_type:string, repeat_reg
 
 
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} -c -t {num_cpu} {preset} {template_fasta_file} {repeat_region.region_fq_file}'
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    anchor_locations_paf_text = result.stdout.strip()
+    cmd = f'-c -t {num_cpu} {preset} {template_fasta_file} {repeat_region.region_fq_file}'
+    mm2_out, mm2_err = pymm2.main(cmd)
+    anchor_locations_paf_text = mm2_out.strip()
 
     find_anchor_locations_from_paf(repeat_region, anchor_locations_paf_text)
     
@@ -337,7 +331,7 @@ def make_core_seq_fastq(repeat_region: RepeatRegion):
     return
 
 
-def round1_and_round2_estimation(minimap2:string, data_type:string, repeat_region: RepeatRegion, num_cpu: int):
+def round1_and_round2_estimation(data_type:string, repeat_region: RepeatRegion, num_cpu: int):
 
     if len(repeat_region.read_dict) == 0: return
 
@@ -364,10 +358,10 @@ def round1_and_round2_estimation(minimap2:string, data_type:string, repeat_regio
     repeat_region.temp_file_list.append(round1_paf_file)
     
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} -c -t {num_cpu} {preset} -f 0.0 {round1_fasta_file} {repeat_region.core_seq_fq_file}'
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    cmd = f'-c -t {num_cpu} {preset} -f 0.0 {round1_fasta_file} {repeat_region.core_seq_fq_file}'
+    mm2_out, mm2_err = pymm2.main(cmd)
     
-    lines = result.stdout.strip().split('\n')
+    lines = mm2_out.strip().split('\n')
     round2_repeat_size_dict = dict()
     
     for line in lines:
@@ -449,13 +443,13 @@ def round3_estimation_from_alignment(repeat_region: RepeatRegion):
     
     return 
 
-def round3_estimation(minimap2:string, data_type:string, fast_mode, repeat_region:RepeatRegion, num_cpu:int):
+def round3_estimation(data_type:string, fast_mode, repeat_region:RepeatRegion, num_cpu:int):
     
-    round3_align(num_cpu, fast_mode, repeat_region, data_type, minimap2)
+    round3_align(num_cpu, fast_mode, repeat_region, data_type)
 
     round3_estimation_from_alignment(repeat_region)
 
-def round3_align (num_cpu:int, fast_mode, repeat_region:RepeatRegion, data_type:string, minimap2:string):
+def round3_align (num_cpu:int, fast_mode, repeat_region:RepeatRegion, data_type:string):
     
     read_id = -1
     existing_reference_fasta_set = set()
@@ -499,9 +493,9 @@ def round3_align (num_cpu:int, fast_mode, repeat_region:RepeatRegion, data_type:
         read_fasta_f.close()
 
         preset = tk.get_preset_for_minimap2(data_type)
-        cmd = f'{minimap2} {preset} -f 0.0 -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {read_fasta_file}'
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        read.round3_paf_text = result.stdout
+        cmd = f'{preset} -f 0.0 -N 100 -c --eqx -t {num_cpu} {template_fasta_file} {read_fasta_file}'
+        mm2_out, mm2_err = pymm2.main(cmd)
+        read.round3_paf_text = mm2_out
 
     return
 
@@ -673,16 +667,16 @@ def quantify1repeat_from_bam(process_name, num_threads_per_region, input_args, e
         tk.eprint(f'NOTICE: [{process_name}] Skipping checking repeat motif in reference (--no_check_repeat_motif_in_ref is set)')
         
     tk.eprint(f'NOTICE: [{process_name}] Step 1: finding anchor location in reads')
-    find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, num_threads_per_region)
+    find_anchor_locations_in_reads(input_args.data_type, repeat_region, num_threads_per_region)
     
     # make core sequence fastq
     make_core_seq_fastq(repeat_region)
 
     tk.eprint(f'NOTICE: [{process_name}] Step 2: round 1 and round 2 estimation')
-    round1_and_round2_estimation(input_args.minimap2, input_args.data_type, repeat_region, num_threads_per_region)
+    round1_and_round2_estimation(input_args.data_type, repeat_region, num_threads_per_region)
 
     tk.eprint(f'NOTICE: [{process_name}] Step 3: round 3 estimation')
-    round3_estimation(input_args.minimap2, input_args.data_type, input_args.fast_mode, repeat_region, num_threads_per_region)
+    round3_estimation(input_args.data_type, input_args.fast_mode, repeat_region, num_threads_per_region)
 
     output_repeat_size_1d(repeat_region)
 

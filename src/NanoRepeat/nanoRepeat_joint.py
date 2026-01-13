@@ -29,16 +29,11 @@ SOFTWARE.
 
 
 import os
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-
-
 import sys
-from typing import final
 import numpy as np
 import argparse
 import shutil
+import pyminimap2 as pymm2
 
 from NanoRepeat import tk
 from NanoRepeat.paf import *
@@ -108,8 +103,8 @@ def parse_user_arguments():
 
     ### optional arguments ### ploidy
     parser.add_argument('-d', '--data_type', required = False, metavar = 'data_type',  type = str, default = 'ont', help = '(required) sequencing data type. Should be one of the following: ont, ont_sup, ont_q20, clr, hifi')
-    parser.add_argument('-c', '--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads used by minimap2 (default: 1)')
-    parser.add_argument('--minimap2',     required = False, metavar = 'PATH',   type = str, default = '', help = 'path to minimap2 (default: using environment default)')
+    parser.add_argument('-c', '--num_threads',  required = False, metavar = 'INT',    type = int, default = 1,  help = 'number of threads')
+    parser.add_argument('--minimap2',     required = False, metavar = '(deprecated)',   type = str, default = 'minimap2', help = '(deprecated) this argument is not needed and will be ignored')
     parser.add_argument('--ploidy',       required = False, metavar = 'INT',    type = int, default = 2,  help = 'ploidy of the sample (default: 2)')
     parser.add_argument('--error_rate',   required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'sequencing error rate (default: 0.1)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.1,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
@@ -151,19 +146,6 @@ def parse_user_arguments():
 
     input_args.in_fq       = os.path.abspath(input_args.in_fq)
     input_args.ref_fasta   = os.path.abspath(input_args.ref_fasta)
-
-    if input_args.minimap2 == '': 
-        input_args.minimap2 = tk.find_executable_path('minimap2')
-        if not input_args.minimap2:
-            tk.eprint('ERROR! minimap2 was not found! Please supply the path to --minimap2')
-            sys.exit(1)
-        else:
-            if os.path.exists(input_args.minimap2):
-                tk.eprint('NOTICE: Found path to minimap2: %s' % input_args.minimap2)
-            else:
-                tk.eprint('ERROR! minimap2 was not found! Please supply the path to --minimap2')
-
-    tk.check_input_file_exists(input_args.minimap2)
 
     if len(input_args.repeat1.split(':')) != 5:
         tk.eprint('ERROR! --repeat1 should be in this format: chr:start:end:repeat_unit:max_size (coordinates are 0-based, e.g. chr4:3074876:3074933:CAG:200)')
@@ -233,9 +215,9 @@ def nanoRepeat_joint (input_args):
         tk.eprint('ERROR: ref_fasta file: %s has no valid sequence!\n' % input_args.ref_fasta)
         sys.exit(1)
 
-    initial_estimation = initial_estimate_repeat_size(input_args.minimap2, repeat_chrom_seq, input_args.in_fq, input_args.data_type, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
+    initial_estimation = initial_estimate_repeat_size(repeat_chrom_seq, input_args.in_fq, input_args.data_type, input_args.num_threads, repeat1, repeat2, max_anchor_len, temp_out_dir)
 
-    final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.minimap2, input_args.data_type, input_args.num_threads, temp_out_dir)
+    final_estimation = fine_tune_read_count(initial_estimation, input_args.in_fq, repeat_chrom_seq, repeat1, repeat2, input_args.data_type, input_args.num_threads, temp_out_dir)
     
     read_repeat_joint_count_dict = output_repeat_size_2d (input_args.in_fq, repeat1.repeat_id, repeat2.repeat_id, input_args.out_prefix, final_estimation.repeat1_count_dict, final_estimation.repeat2_count_dict)
 
@@ -249,7 +231,7 @@ def nanoRepeat_joint (input_args):
     return
 
 
-def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, repeat1, repeat2, minimap2, data_type, num_threads, out_dir):
+def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, repeat1, repeat2, data_type, num_threads, out_dir):
 
     assert repeat1.chrom == repeat2.chrom
     assert repeat1.start < repeat2.start
@@ -281,16 +263,16 @@ def fine_tune_read_count(initial_estimation, in_fastq_file, repeat_chrom_seq, re
     
     fastq_dict = fastq_file_to_dict(in_fastq_file)
 
-    round2_estimation = round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, minimap2, data_type, num_threads, out_dir)
+    round2_estimation = round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, data_type, num_threads, out_dir)
     
     if round2_estimation.step_size1 > 1 and round2_estimation.step_size2 > 1:
-        final_estimation = round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, minimap2, data_type, num_threads, out_dir)
+        final_estimation = round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, data_type, num_threads, out_dir)
     else:
         final_estimation = round2_estimation
     
     return final_estimation
 
-def round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, minimap2, data_type, num_threads, out_dir):
+def round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, data_type, num_threads, out_dir):
 
     if len(round2_estimation.repeat1_count_dict) == 0 or len(round2_estimation.repeat2_count_dict) == 0:
         return RepeatSize()
@@ -355,8 +337,8 @@ def round3_estimation_of_repeat_size(initial_estimation, round2_estimation, fast
                 continue
             tmp_ref_file = os.path.join(out_dir, '%d.%d.ref.fasta' % (repeat_count1, repeat_count2))
             build_fasta_template_for_two_repeats(left_anchor_seq, mid_anchor_seq, right_anchor_seq, repeat1, repeat2, repeat_count1, repeat_count2, tmp_ref_file)
-            cmd = f'{minimap2} -c --eqx -t {num_threads} {preset} {tmp_ref_file} {tmp_fastq_file} >> {round3_paf_file} 2> /dev/null'
-            tk.run_system_cmd(cmd)
+            cmd = f'-c --eqx -t {num_threads} {preset} -o {round3_paf_file} {tmp_ref_file} {tmp_fastq_file}'
+            mm2_out, mm2_err = pymm2.main(cmd)
             tk.rm(tmp_ref_file)
             tk.rm(tmp_fastq_file)
 
@@ -391,7 +373,7 @@ def choose_best_step_size(repeat, count_range_dict):
   
     return count_list[0][0]
 
-def round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, minimap2, data_type, num_threads, out_dir):
+def round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chrom_seq, repeat1, repeat2, data_type, num_threads, out_dir):
     
     assert repeat1.chrom == repeat2.chrom
     assert repeat1.start < repeat2.start
@@ -431,8 +413,8 @@ def round2_estimation_of_repeat_size(initial_estimation, fastq_dict, repeat_chro
                 continue
             tmp_ref_file = os.path.join(out_dir, '%d.%d.ref.fasta' % (repeat_count1, repeat_count2))
             build_fasta_template_for_two_repeats(left_anchor_seq, mid_anchor_seq, right_anchor_seq, repeat1, repeat2, repeat_count1, repeat_count2, tmp_ref_file)
-            cmd = f'{minimap2} {preset} -c --eqx -t {num_threads}  {tmp_ref_file} {tmp_fastq_file} >> {round2_paf_file} 2> /dev/null'
-            tk.run_system_cmd(cmd)
+            cmd = f'{preset} -c --eqx -t {num_threads} -o {round2_paf_file} {tmp_ref_file} {tmp_fastq_file}'
+            mm2_out, mm2_err = pymm2.main(cmd)
             tk.rm(tmp_ref_file)
             tk.rm(tmp_fastq_file)
 
@@ -524,7 +506,7 @@ def build_fasta_template_for_two_repeats(left_anchor_seq, mid_anchor_seq, right_
 
     return
 
-def initial_estimate_repeat_size(minimap2, repeat_chrom_seq, in_fastq_file, data_type, num_threads, repeat1, repeat2, max_anchor_len, out_dir):
+def initial_estimate_repeat_size(repeat_chrom_seq, in_fastq_file, data_type, num_threads, repeat1, repeat2, max_anchor_len, out_dir):
 
     tk.eprint('NOTICE: Round 1 estimation')
     assert repeat1.chrom == repeat2.chrom
@@ -560,11 +542,11 @@ def initial_estimate_repeat_size(minimap2, repeat_chrom_seq, in_fastq_file, data
     round1_right_anchor_paf_file = os.path.join(out_dir, 'round1.right.paf')
     preset = tk.get_preset_for_minimap2(data_type)
 
-    cmd = f'{minimap2} {preset} -c --eqx -t {num_threads} {left_template_fasta_file} {in_fastq_file} > {round1_left_anchor_paf_file} 2> /dev/null'
-    tk.run_system_cmd(cmd)
+    cmd = f'{preset} -c --eqx -t {num_threads} -o {round1_left_anchor_paf_file} {left_template_fasta_file} {in_fastq_file}'
+    mm2_out, mm2_err = pymm2.main(cmd)
     
-    cmd = f'{minimap2} {preset} -c --eqx -t {num_threads} {right_template_fasta_file} {in_fastq_file} > {round1_right_anchor_paf_file} 2> /dev/null'
-    tk.run_system_cmd(cmd)
+    cmd = f'{preset} -c --eqx -t {num_threads} -o {round1_right_anchor_paf_file} {right_template_fasta_file} {in_fastq_file}'
+    mm2_out, mm2_err = pymm2.main(cmd)
 
     cmd = f'cat {round1_left_anchor_paf_file} {round1_right_anchor_paf_file} | sort -k1 - > {round1_paf_file}'
     tk.run_system_cmd(cmd)

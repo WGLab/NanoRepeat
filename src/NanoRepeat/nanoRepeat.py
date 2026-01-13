@@ -36,8 +36,9 @@ from NanoRepeat import nanoRepeat_bam
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
 from NanoRepeat import __version__
+import pyminimap2 as pymm2
 
-def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, minimap2, num_cpu, bam_prefix):
+def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, num_cpu, bam_prefix):
     
     sam_file        = f'{bam_prefix}.sam'
     bam_file        = f'{bam_prefix}.bam'
@@ -53,8 +54,8 @@ def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, minimap2, 
         os.remove(sorted_bam_file)
 
     preset = tk.get_preset_for_minimap2(data_type)
-    cmd = f'{minimap2} -a {preset} -t {num_cpu} {ref_fasta_file} {in_fastq_file} > {sam_file} 2> /dev/null'
-    tk.run_system_cmd(cmd)
+    cmd = f'-a {preset} -t {num_cpu} -o {sam_file} {ref_fasta_file} {in_fastq_file}'
+    mm2_out, mm2_err = pymm2.main(cmd)
 
     pysam.sort("-@", str(num_cpu), "-o", sorted_bam_file, sam_file)
 
@@ -70,8 +71,8 @@ def map_fastq_to_ref_genome(in_fastq_file, data_type, ref_fasta_file, minimap2, 
 
 def preprocess_fastq(input_args):
     
-    bam_prefix    =  f'{input_args.out_prefix}.minimap2'
-    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.data_type, input_args.ref_fasta, input_args.minimap2, input_args.num_cpu, bam_prefix)
+    bam_prefix    =  f'{input_args.out_prefix}.pyminimap2'
+    in_bam_file   = map_fastq_to_ref_genome(input_args.input, input_args.data_type, input_args.ref_fasta, input_args.num_cpu, bam_prefix)
     
     nanoRepeat_bam.nanoRepeat_bam(input_args, in_bam_file)
     return
@@ -116,7 +117,7 @@ def main():
     parser.add_argument('-v', '--version', action='version', version=f'%(prog)s {__version__}', help='show program\'s version number and exit')
     parser.add_argument('-c', '--num_cpu', required = False, metavar = 'INT',   type = int, default = 1,  help ='(optional) number of CPU cores (default: 1)')
     parser.add_argument('--samtools', required = False, metavar = '(deprecated)',  type = str, default = 'samtools', help ='(deprecated) this argument is not needed and will be ignored')
-    parser.add_argument('--minimap2', required = False, metavar = 'path/to/minimap2',  type = str, default = 'minimap2', help ='(optional) path to minimap2 (default: using environment default)')
+    parser.add_argument('--minimap2', required = False, metavar = '(deprecated)',  type = str, default = 'minimap2', help ='(deprecated) this argument is not needed and will be ignored')
     parser.add_argument('--ploidy',   required = False, metavar = 'INT', type = int, default = 2,  help ='(optional) ploidy of the sample (default: 2)')
     parser.add_argument('--anchor_len', required = False, metavar = 'INT', type = int, default = 1000, help ='(optional) length of up/downstream sequence to help identify the repeat region (default: 1000 bp, increase this value if the 1000 bp up/downstream sequences are also repeat)')
     parser.add_argument('--max_mutual_overlap', required = False, metavar = 'FLOAT',  type = float, default = 0.15,  help = 'max mutual overlap of two alleles in terms of repeat size distribution (default value: 0.1). If the Gaussian distribution of two alleles have more overlap than this value, the two alleles will be merged into one allele.')
