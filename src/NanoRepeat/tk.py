@@ -148,7 +148,7 @@ def fasta_file2dict(fasta_file):
             curr_seq = ''
             continue
 
-        curr_seq += line
+        curr_seq += line.upper()
      
     fasta_fp.close()
 
@@ -179,7 +179,7 @@ def read_fasta_file(fasta_file):
             curr_seq = ''
             continue
 
-        curr_seq += line
+        curr_seq += line.upper()
      
     fasta_fp.close()
 
@@ -223,7 +223,7 @@ def read_one_chr_from_fasta_file(fasta_file, target_chr):
         elif status == 's':
             continue
         elif status == 'r':
-            target_seq += line
+            target_seq += line.upper()
      
     fasta_fp.close()
     

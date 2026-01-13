@@ -123,6 +123,7 @@ def main():
     parser.add_argument('--fast_mode', required = False, action='store_true', help = 'fast quantification for repeat size, accuracy may be a little lower')
     parser.add_argument('--save_temp_files', required = False, action='store_true', help = 'save temporary alignment files')
     parser.add_argument('--no_details', required = False, action='store_true', help = 'do not output detailed information for each repeat region')
+    parser.add_argument('--no_check_repeat_motif_in_ref', required = False, action='store_true', help = 'do not check repeat motif in reference sequence')
     parser.add_argument('--max_num_components', required = False, metavar = 'INT',  type = int, default = -1,  help = 'max number of components for the Gaussian mixture model (default value: ploidy + 20). Some noisy reads and outlier reads may form a component. Therefore the number of components is usually larger than ploidy. If your sample have too many outlier reads, you can increase this number.')
     
     if len(sys.argv) < 2 or sys.argv[1] in ['help', 'h', '-help', 'usage']:

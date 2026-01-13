@@ -28,6 +28,8 @@ SOFTWARE.
 
 
 import os
+
+from NanoRepeat import repeat_region
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -42,7 +44,7 @@ from typing import List
 import subprocess
 import multiprocessing
 import glob
-
+import Levenshtein
 
 from NanoRepeat import tk
 from NanoRepeat.repeat_region import *
@@ -139,100 +141,22 @@ def extract_ref_sequence(ref_fasta_dict, repeat_region:RepeatRegion):
     
     return
 
-def refine_repeat_region_in_ref(minimap2:string, repeat_region:RepeatRegion, num_cpu:int):
+
+def check_repeat_motif_in_ref(repeat_region:RepeatRegion, num_cpu:int):
 
     mid_ref_seq            = repeat_region.mid_ref_seq
     repeat_unit_seq        = repeat_region.repeat_unit_seq
     repeat_region_location = repeat_region.to_invertal()
     temp_out_dir           = repeat_region.temp_out_dir
-    out_prefix             = repeat_region.out_prefix
-    error_message_file     = out_prefix + '.error_message.log'
-    mid_ref_seq_len        = len(mid_ref_seq)
-
-    buffer_size = 10
-    if mid_ref_seq_len < buffer_size: return
-
-    num_units = int(float(mid_ref_seq_len) / len(repeat_unit_seq))+1
-    pure_repeat_seq = repeat_unit_seq * num_units
-
-    ref_check_paf_file   = os.path.join(temp_out_dir, 'ref_aligned_to_pure_repeats.paf')
-    mid_ref_seq_file     = os.path.join(temp_out_dir, 'mid_ref_seq.fasta')
-    pure_repeat_seq_file = os.path.join(temp_out_dir, 'pure_repeat_seq.fasta')
-
+    mid_ref_seq_file       = os.path.join(temp_out_dir, 'mid_ref_seq.fasta')
     write_seq_to_fasta(f'mid_ref_seq_{repeat_region_location}', mid_ref_seq, mid_ref_seq_file)
-    write_seq_to_fasta('pure_repeat_seq', pure_repeat_seq, pure_repeat_seq_file)
 
-    score_parameters = '-x ava-ont -z30 -k3 -w2 -m1 -n2 -s10'
-
-    cmd = f'{minimap2} {score_parameters} -f 0 --cs -t {num_cpu} {pure_repeat_seq_file} {mid_ref_seq_file}'
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    lines = result.stdout.strip().split('\n')
-
-    paf_list = []
-    for line in lines:
-        if line.strip() == "" : continue 
-        col_list = line.strip().split('\t')
-        paf = PAF(col_list)
-        paf_list.append(paf)
-    
-    if len(paf_list) == 0:
+    pure_repeat_seq = repeat_unit_seq * int(len(mid_ref_seq) / len(repeat_unit_seq))
+    edit_distance = Levenshtein.distance(pure_repeat_seq, mid_ref_seq)
+    if edit_distance * 4 > min(len(pure_repeat_seq), len(mid_ref_seq)):
         repeat_region.ref_has_issue = True
+        tk.eprint(f'ERROR! the repeat motif {repeat_unit_seq} in ref: {repeat_region_location} is NOT found. Seq = {mid_ref_seq}')
         
-        error_message = f'ERROR! The given repeat motif ({repeat_region.repeat_unit_seq}) was not found in the reference sequence ({repeat_region_location}). Please check your input!\n'
-        error_message += f'The repeat motif is: {repeat_unit_seq}\n'
-        error_message += f'The sequence inside {repeat_region_location} is: {mid_ref_seq}\n'
-        
-        tk.eprint(f'current repeat: {repeat_region.to_unique_id()}\n')
-        tk.eprint(error_message)
-        error_message_f = open(error_message_file, 'w')
-        error_message_f.write(error_message)
-        error_message_f.close()
-
-        return
-
-    max_align_score     = paf_list[0].align_score
-    max_align_score_idx = 0
-    for i in range(1, len(paf_list)):
-        if paf_list[i].align_score > max_align_score:
-            max_align_score = paf_list[i].align_score
-            max_align_score_idx = i
-    
-    best_paf  = paf_list[max_align_score_idx]
-    align_len = best_paf.qend - best_paf.qstart
-
-    if best_paf.align_score < 0:
-        repeat_region.ref_has_issue = True
-        error_message  = f'ERROR! In the reference sequence, the interval ({repeat_region_location}) has too many mismatches with the repeat motif. Please check your input.\n\n'
-        error_message += f'The repeat motif is: {repeat_unit_seq}\n'
-        error_message += f'The sequence inside {repeat_region_location} is:\n'
-        error_message += mid_ref_seq[0:best_paf.qstart] + '---' + mid_ref_seq[best_paf.qstart:best_paf.qend] + '---' + mid_ref_seq[best_paf.qend:] + '\n'
-        
-        tk.eprint(f'current repeat: {repeat_region.to_unique_id()}\n')
-        tk.eprint(error_message)
-        error_message_f = open(error_message_file, 'w')
-        error_message_f.write(error_message)
-        error_message_f.close()
-        return
-        
-    if mid_ref_seq_len - align_len > buffer_size and float(align_len)/mid_ref_seq_len < 0.8:
-        repeat_region.ref_has_issue = True
-        
-        corrected_start_pos = repeat_region.start_pos + best_paf.qstart
-        corrected_end_pos   = corrected_start_pos + align_len
-        
-        error_message = f'ERROR! In the reference sequence, the interval ({repeat_region_location}) included non-repeat sequences or repeats that are not the given motif. Please check your input.\n'
-        error_message += f'The repeat motif is: {repeat_unit_seq}\n'
-        error_message += f'The sequence inside {repeat_region_location} is:\n'
-        error_message += mid_ref_seq[0:best_paf.qstart] + '---' + mid_ref_seq[best_paf.qstart:best_paf.qend] + '---' + mid_ref_seq[best_paf.qend:] + '\n'
-        error_message += f'\n\nWe suggest you change the chromosome positions (in the `--repeat_region_bed` file) to:\n{repeat_region.chrom}\t{corrected_start_pos}\t{corrected_end_pos}\t{repeat_unit_seq}\n'
-        
-        tk.eprint(f'current repeat: {repeat_region.to_unique_id()}\n')
-        tk.eprint(error_message)
-        error_message_f = open(error_message_file, 'w')
-        error_message_f.write(error_message)
-        error_message_f.close()
-
     return
 
 def write_seq_to_fasta(seq_name, seq, out_file):
@@ -655,8 +579,8 @@ def split_allele_using_gmm_1d(repeat_region:RepeatRegion, ploidy, error_rate, ma
         plot_repeat_counts_1d(readinfo_dict, allele_list, repeat_region.to_unique_id(), out_prefix)
 
     return
-
-def extract_fastq_from_bam(in_bam_file, repeat_region:RepeatRegion, flank_dist, out_fastq_file):
+    
+def extract_fastq_from_bam(input_args, in_bam_file, repeat_region:RepeatRegion, flank_dist, out_fastq_file):
     quality_shift = 33
     assert (flank_dist >= 0)
     chrom = repeat_region.chrom
@@ -664,22 +588,23 @@ def extract_fastq_from_bam(in_bam_file, repeat_region:RepeatRegion, flank_dist, 
     end_pos = repeat_region.end_pos + flank_dist
     if start_pos < 0: start_pos = 0
 
-    bam = pysam.AlignmentFile(in_bam_file, "rb")
-    
+    bam = pysam.AlignmentFile(in_bam_file, "rb", reference_filename=input_args.ref_fasta)
+    written_reads_set = set()
     with open(out_fastq_file, 'w') as fastq:
         for read in bam.fetch(chrom, start_pos, end_pos):
-            if read.query_sequence == None: 
+            if not read.query_sequence: continue
+            if read.query_sequence == None:
                 continue
-            
+            if read.query_name in written_reads_set: continue
             fastq.write(f'@{read.query_name}\n{read.query_sequence}\n+\n')
             if read.query_qualities != None:
                 fastq.write(''.join([chr(q + quality_shift) for q in read.query_qualities]) + '\n')
             else:
                 fastq.write(chr(quality_shift + 13) * len(read.query_sequence) + '\n')
-
+            written_reads_set.add(read.query_name)
     bam.close()
     return
-    
+
 def quantify1repeat_from_bam_worker(process_id, num_para_regions, num_threads_per_region, input_args, error_rate, in_bam_file, ref_fasta_dict, repeat_region_list, result_queue):
     result_list = []
     for i in range(process_id, len(repeat_region_list), num_para_regions):
@@ -729,7 +654,7 @@ def quantify1repeat_from_bam(process_name, num_threads_per_region, input_args, e
 
     # extract reads from bam file
     repeat_region.region_fq_file = os.path.join(temp_out_dir, f'{repeat_region.to_outfile_prefix()}.fastq')
-    extract_fastq_from_bam(in_bam_file, repeat_region, repeat_region.anchor_len, repeat_region.region_fq_file)
+    extract_fastq_from_bam(input_args, in_bam_file, repeat_region, repeat_region.anchor_len, repeat_region.region_fq_file)
     
     fastq_file_size = os.path.getsize(repeat_region.region_fq_file)
 
@@ -740,10 +665,13 @@ def quantify1repeat_from_bam(process_name, num_threads_per_region, input_args, e
     # extract ref sequence
     extract_ref_sequence(ref_fasta_dict, repeat_region)
 
-    refine_repeat_region_in_ref(input_args.minimap2, repeat_region, num_threads_per_region)
-    if repeat_region.ref_has_issue == True and input_args.save_temp_files == False:
-        return _clean_and_exit(input_args, repeat_region)
-    
+    if input_args.no_check_repeat_motif_in_ref == False:
+        check_repeat_motif_in_ref(repeat_region, num_threads_per_region)
+        if repeat_region.ref_has_issue == True and input_args.save_temp_files == False:
+            return _clean_and_exit(input_args, repeat_region)
+    else:
+        tk.eprint(f'NOTICE: [{process_name}] Skipping checking repeat motif in reference (--no_check_repeat_motif_in_ref is set)')
+        
     tk.eprint(f'NOTICE: [{process_name}] Step 1: finding anchor location in reads')
     find_anchor_locations_in_reads(input_args.minimap2, input_args.data_type, repeat_region, num_threads_per_region)
     

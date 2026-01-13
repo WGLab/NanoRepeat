@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "NanoRepeat"
+version = "1.8.3"
+description = "NanoRepeat: quantification of Short Tandem Repeats (STRs) from long-read sequencing data"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Li Fang, Kai Wang", email = "fangli9@mail.sysu.edu.cn"}
+]
+requires-python = ">=3.7"
+dependencies = [
+    "matplotlib>=3.4.0",
+    "numpy>=1.21.6",
+    "scikit-learn>=0.22.1",
+    "pysam>=0.17.0",
+    "pyminimap2>=2.30.0",
+    "levenshtein>=0.25"
+]
+
+[project.urls]
+Homepage = "https://github.com/WGLab/NanoRepeat"
+
+[project.scripts]
+nanoRepeat = "NanoRepeat.nanoRepeat:main"
+nanoRepeat-joint = "NanoRepeat.nanoRepeat_joint:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
