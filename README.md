@@ -17,15 +17,9 @@
 
 #### Prerequisites:
 
-1. [Python](https://www.python.org/downloads/) (version >= 3.8)
-2. [Minimap2](https://github.com/lh3/minimap2) (version >= 2.22)
-
-You may alreadly have `minimap2` if you performed analysis of long-read sequencing data. You can use `which minimap2` to check the full path to the two executable files. Please note that `minimap2` should be v2.22 or later. 
-
-Once you installed the above tools, you can use the following commands to install NanoRepeat (we recommend creating an new conda environment to avoid dependency issues):
 
 ```
-conda create -n nanorepeat python=3.8
+conda create -n nanorepeat python=3.9
 conda activate nanorepeat
 git clone https://github.com/WGLab/NanoRepeat.git
 cd NanoRepeat
@@ -35,7 +29,7 @@ pip install .
 If you want to install a stable version from Python Package Index (PyPI): 
 
 ```
-conda create -n nanorepeat python=3.8
+conda create -n nanorepeat python=3.9
 conda activate nanorepeat
 pip install NanoRepeat
 ```
@@ -73,8 +67,6 @@ nanoRepeat.py \
     -r path/to/NanoRepeat_v1.3_example_data/HG002/GRCh37_chr1.fasta \
     -b path/to/NanoRepeat_v1.3_example_data/HG002/HG002_GRCh37_example_regions.bed \
     -c 4 \
-    --samtools path/to/samtools \
-    --minimap2 path/to/minimap2 \
     -o ./nanorepeat_output/HG002
 ```
 
@@ -104,7 +96,6 @@ nanoRepeat.py \
 
 `-o` specifies the output prefix. Please include the path to the output directory and prefix of output file names. In our case, the output prefix is `./nanorepeat_output/HG002`, which means the output directory is `./nanorepeat_output/` and the prefix of output file names is `HG002`.
 
-`--samtools` and `--minimap2` specifies the path to the two software tools. The two arguments are optional if `samtools` and `minimap2` and be found in your environment. 
 
 If you run NanoRepeat sucessfully, you will see 90 output files (six files per region). Output files of a single repeat region look like this: 
 
